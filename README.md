@@ -13,6 +13,7 @@ ASTAP is a production-oriented pipeline platform that ingests GitHub repositorie
 - [Executive Summary](#executive-summary)
 - [Current Product Status](#current-product-status)
 - [Core Capabilities](#core-capabilities)
+- [Application Screenshots](#application-screenshots)
 - [Architecture](#architecture)
 - [Data Model](#data-model)
 - [Pipeline Lifecycle](#pipeline-lifecycle)
@@ -58,6 +59,25 @@ Defined and visible (not yet executed):
 - Python AST-based discovery with idempotent target replacement
 - Run timeline and progress visualization in the React UI
 - Queue monitoring via RQ Dashboard
+
+## Application Screenshots
+### Landing Page
+![Landing Page](docs/assets/1.png)
+
+### Login Page
+![Login Page](docs/assets/2.png)
+
+### Projects Page
+![Projects Page](docs/assets/3.png)
+
+### Run Detail - Overview
+![Run Detail Overview](docs/assets/4.png)
+
+### Run Detail - Timeline
+![Run Detail Timeline](docs/assets/5.png)
+
+### Run Detail - Artifacts
+![Run Detail Artifacts](docs/assets/6.png)
 
 ## Architecture
 ### Logical Components
