@@ -29,6 +29,7 @@ ASTAP is a production-oriented pipeline platform that ingests GitHub repositorie
 - [Limitations](#limitations)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
+- [Project Policies](#project-policies)
 - [License](#license)
 
 ## Executive Summary
@@ -319,11 +320,13 @@ For production environments:
 - Extend discovery to additional languages and frameworks
 
 ## Contributing
-1. Open an issue with expected behavior and scope.
-2. Create a focused feature branch.
-3. Keep DB changes in versioned migrations.
-4. Add tests or validation steps for behavioral changes.
-5. Submit a PR with setup, verification, and rollback notes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full contribution workflow and PR expectations.
+
+## Project Policies
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Support Guide](SUPPORT.md)
+- [Terms and Conditions](TERMS_AND_CONDITIONS.md)
 
 ## License
-This project currently has no committed license file. Add a `LICENSE` file before external distribution.
+This project is licensed under the [MIT License](LICENSE).
