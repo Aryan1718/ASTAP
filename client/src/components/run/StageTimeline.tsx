@@ -1,5 +1,8 @@
+import { useNavigate } from "react-router-dom";
+
 import type { Stage } from "../../types/api";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/Button";
 import { StatusBadge } from "../ui/StatusBadge";
 
 const orderedStages = ["ingest", "discover", "generate_tests", "execute_tests", "analyze"] as const;
@@ -8,13 +11,15 @@ function findStage(stages: Stage[], name: string) {
   return stages.find((stage) => stage.stage === name);
 }
 
-export function StageTimeline({ stages }: { stages: Stage[] }) {
+export function StageTimeline({ stages, runId }: { stages: Stage[]; runId: string }) {
+  const navigate = useNavigate();
+
   return (
     <div className="surface p-6 md:p-8">
       <div className="border-b border-line/80 pb-6">
         <p className="m-0 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Stages</p>
         <h2 className="mt-2 text-2xl font-semibold text-ink">Pipeline timeline</h2>
-        <p className="mt-2 text-sm leading-6 text-muted">Ingest and discover reflect live API state. Later stages stay visible as placeholders.</p>
+        <p className="mt-2 text-sm leading-6 text-muted">Ingest, discover, and generated tests reflect live API state. Later stages stay visible as placeholders.</p>
       </div>
       <div className="mt-6 grid gap-4">
         {orderedStages.map((name, index) => {
@@ -53,7 +58,18 @@ export function StageTimeline({ stages }: { stages: Stage[] }) {
                   </div>
                 </div>
                 {isLive ? (
-                  <StatusBadge status={stage?.status ?? "pending"} />
+                  <div className="flex items-center gap-3">
+                    {name === "generate_tests" && stage?.status === "succeeded" ? (
+                      <Button
+                        variant="secondary"
+                        className="px-3 py-2 text-xs"
+                        onClick={() => navigate(`/app/runs/${runId}/generated-tests`)}
+                      >
+                        View
+                      </Button>
+                    ) : null}
+                    <StatusBadge status={stage?.status ?? "pending"} />
+                  </div>
                 ) : (
                   <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Coming soon

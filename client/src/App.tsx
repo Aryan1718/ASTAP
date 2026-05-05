@@ -8,6 +8,7 @@ import { SignupPage } from "./pages/SignupPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { RunDetailPage } from "./pages/RunDetailPage";
+import { GeneratedTestsPage } from "./pages/GeneratedTestsPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
+        <Route path="runs/:runId/generated-tests" element={<GeneratedTestsPage />} />
         <Route
           path="settings"
           element={<PlaceholderPage title="Settings" description="Workspace controls, access policies, and execution defaults are reserved for later stages." />}

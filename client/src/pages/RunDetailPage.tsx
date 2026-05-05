@@ -93,7 +93,6 @@ export function RunDetailPage() {
   }, [run, runId, session]);
 
   const errorMessage = useMemo(() => run?.stages.find((stage) => stage.error_message)?.error_message, [run]);
-
   async function copyValue(label: string, value: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -127,7 +126,7 @@ export function RunDetailPage() {
       <SectionHeader
         eyebrow="Run detail"
         title={project ? `${project.name} execution` : "Run execution"}
-        description="Monitor ingest and discover progress, resolved commit metadata, and immutable snapshot details for this run."
+        description="Monitor pipeline progress, inspect generated test artifacts, and review immutable snapshot details for this run."
         actions={<StatusBadge status={run.status} className="text-[11px]" />}
       />
 
@@ -186,7 +185,7 @@ export function RunDetailPage() {
       </Card>
 
       <div className="grid gap-8 2xl:grid-cols-[1.15fr_0.85fr]">
-        <StageTimeline stages={run.stages} />
+        <StageTimeline stages={run.stages} runId={run.id} />
         <ArtifactsPanel snapshot={run.snapshot} onCopy={copyValue} />
       </div>
 

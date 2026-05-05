@@ -3,6 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel, HttpUrl
 
+from shared.targets import GeneratedTestManifestEntry
+
 
 class ProjectCreate(BaseModel):
     name: str
@@ -70,3 +72,33 @@ class RunDetailOut(BaseModel):
     stages: list[StageOut]
     progress_percent: int
     snapshot: Optional[SnapshotOut] = None
+
+
+class GeneratedTestManifestOut(BaseModel):
+    version: int
+    run_id: str
+    generated_at: str
+    files: list[GeneratedTestManifestEntry]
+
+
+class GeneratedTestTreeNode(BaseModel):
+    path: str
+    name: str
+    type: str
+    target_key: str | None = None
+    target_type: str | None = None
+    test_kind: str | None = None
+    symbol: str | None = None
+
+
+class GeneratedTestTreeResponse(BaseModel):
+    run_id: str
+    root: str
+    nodes: list[GeneratedTestTreeNode]
+
+
+class GeneratedTestFileContentResponse(BaseModel):
+    run_id: str
+    path: str
+    content: str
+    language: str

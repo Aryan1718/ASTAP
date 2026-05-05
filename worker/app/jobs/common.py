@@ -2,9 +2,7 @@ import hashlib
 import tarfile
 from pathlib import Path
 
-from supabase import Client, create_client
-
-from shared.config import settings
+from shared.storage import download_storage_object, upload_file_to_storage
 
 
 def file_sha256(path: Path) -> str:
@@ -13,26 +11,6 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def supabase_client() -> Client:
-    return create_client(settings.supabase_url, settings.supabase_service_role_key)
-
-
-def download_storage_object(bucket: str, object_key: str, destination: Path) -> None:
-    payload = supabase_client().storage.from_(bucket).download(object_key)
-    destination.write_bytes(payload)
-
-
-def upload_file_to_storage(bucket: str, object_key: str, source: Path, content_type: str) -> None:
-    storage = supabase_client().storage.from_(bucket)
-    with source.open("rb") as handle:
-        storage.upload(
-            path=object_key,
-            file=handle,
-            file_options={"content-type": content_type, "upsert": "true"},
-        )
-
 
 def safe_extract_tar_gz(archive_path: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)

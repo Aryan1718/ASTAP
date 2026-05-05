@@ -9,11 +9,22 @@ type ProjectsTableProps = {
   lastRuns: Record<string, RunListItem | undefined>;
   loading?: boolean;
   startingRunId?: string | null;
+  deletingProjectId?: string | null;
   onStartRun: (project: Project) => void;
+  onDeleteProject: (project: Project) => void;
   onOpenRun: (runId: string) => void;
 };
 
-export function ProjectsTable({ projects, lastRuns, loading, onStartRun, onOpenRun, startingRunId }: ProjectsTableProps) {
+export function ProjectsTable({
+  projects,
+  lastRuns,
+  loading,
+  onStartRun,
+  onDeleteProject,
+  onOpenRun,
+  startingRunId,
+  deletingProjectId,
+}: ProjectsTableProps) {
   if (loading) {
     return (
       <div className="grid gap-4">
@@ -84,6 +95,14 @@ export function ProjectsTable({ projects, lastRuns, loading, onStartRun, onOpenR
                     View Latest Run
                   </Button>
                 ) : null}
+                <Button
+                  variant="danger"
+                  disabled={deletingProjectId === project.id}
+                  onClick={() => onDeleteProject(project)}
+                  className="w-full justify-center"
+                >
+                  {deletingProjectId === project.id ? "Removing..." : "Remove Project"}
+                </Button>
               </div>
             </div>
           </div>

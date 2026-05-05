@@ -56,6 +56,30 @@ export type RunDetail = {
   snapshot?: Snapshot | null;
 };
 
+export type GeneratedTestManifestEntry = {
+  target_key: string;
+  target_type: string;
+  symbol: string;
+  source_file: string;
+  generated_test_file?: string | null;
+  test_kind?: string | null;
+  status: string;
+  skip_reason?: string | null;
+};
+
+export type GeneratedTestManifest = {
+  version: number;
+  run_id: string;
+  generated_at: string;
+  files: GeneratedTestManifestEntry[];
+};
+
+export type GeneratedTestFileContent = {
+  path: string;
+  content: string;
+  language: string;
+};
+
 export type ProjectPayload = {
   name: string;
   repo_url: string;

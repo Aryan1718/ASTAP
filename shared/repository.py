@@ -4,6 +4,7 @@ from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from shared.models import Job, Project, Run, Target, Workspace
+from shared.targets import SlimTargetRow, serialize_metadata
 
 
 def get_workspace_for_user(session: Session, user_id: str) -> Workspace | None:
@@ -37,6 +38,12 @@ def list_projects(session: Session, workspace_id: str) -> list[Project]:
 def get_project(session: Session, project_id: str, workspace_id: str) -> Project | None:
     stmt: Select[tuple[Project]] = select(Project).where(Project.id == project_id, Project.workspace_id == workspace_id)
     return session.scalar(stmt)
+
+
+def delete_project(session: Session, project_id: str, workspace_id: str) -> bool:
+    result = session.execute(delete(Project).where(Project.id == project_id, Project.workspace_id == workspace_id))
+    session.commit()
+    return bool(result.rowcount)
 
 
 def create_run(session: Session, project: Project, ref_requested: str) -> Run:
@@ -223,7 +230,16 @@ def get_job_by_stage(session: Session, run_id: str, stage: str) -> Job | None:
     return session.scalar(stmt)
 
 
-def replace_targets_for_run(session: Session, run_id: str, targets: list[dict]) -> None:
+def list_targets_for_run(session: Session, run_id: str) -> list[Target]:
+    stmt: Select[tuple[Target]] = (
+        select(Target)
+        .where(Target.run_id == run_id)
+        .order_by(Target.file_path.asc(), Target.symbol.asc(), Target.created_at.asc())
+    )
+    return list(session.scalars(stmt).all())
+
+
+def replace_targets_for_run(session: Session, run_id: str, targets: list[SlimTargetRow]) -> None:
     session.execute(delete(Target).where(Target.run_id == run_id))
     if targets:
         session.add_all(
@@ -231,11 +247,12 @@ def replace_targets_for_run(session: Session, run_id: str, targets: list[dict]) 
                 Target(
                     id=str(uuid4()),
                     run_id=run_id,
-                    target_type=target["target_type"],
-                    file_path=target["file_path"],
-                    symbol=target["symbol"],
-                    signature=target.get("signature"),
-                    target_metadata=target.get("metadata", {}),
+                    target_key=target.target_key,
+                    target_type=target.target_type,
+                    file_path=target.file_path,
+                    symbol=target.symbol,
+                    signature=target.signature,
+                    target_metadata=serialize_metadata(target.metadata),
                 )
                 for target in targets
             ]
