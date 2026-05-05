@@ -1,29 +1,43 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from api.app.auth import CurrentUser, get_current_user
+from api.app.generated_tests import GeneratedTestsService
 from shared.config import settings
 from shared.db import get_session
 from shared.progress import progress_percent_for_stages
 from shared.queue import get_queue
 from shared.repository import (
-    create_job,
     create_project,
+    create_job,
     create_run,
+    delete_project,
     get_project,
     get_run,
-    list_jobs_for_runs,
     get_workspace_for_user,
     list_jobs_for_run,
+    list_jobs_for_runs,
     list_projects,
     list_runs,
     set_job_rq_id,
 )
-from shared.schemas import ProjectCreate, ProjectOut, RunCreate, RunDetailOut, RunListItemOut, RunStartOut, SnapshotOut, StageOut
+from shared.schemas import (
+    GeneratedTestFileContentResponse,
+    GeneratedTestManifestOut,
+    GeneratedTestTreeResponse,
+    ProjectCreate,
+    ProjectOut,
+    RunCreate,
+    RunDetailOut,
+    RunListItemOut,
+    RunStartOut,
+    SnapshotOut,
+    StageOut,
+)
 
 app = FastAPI(title="Automated Testing Platform API")
-RUN_STAGE_ORDER = ["ingest", "discover"]
+RUN_STAGE_ORDER = ["ingest", "discover", "generate_tests"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.api_cors_origin],
@@ -87,6 +101,19 @@ def list_projects_endpoint(
     ]
 
 
+@app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_endpoint(
+    project_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    workspace = require_workspace(session, current_user)
+    deleted = delete_project(session, project_id, workspace.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/projects/{project_id}/runs", response_model=RunStartOut)
 def create_run_endpoint(
     project_id: str,
@@ -103,6 +130,7 @@ def create_run_endpoint(
     run = create_run(session, project=project, ref_requested=ref_requested)
     job = create_job(session, run_id=run.id, stage="ingest")
     create_job(session, run_id=run.id, stage="discover")
+    create_job(session, run_id=run.id, stage="generate_tests")
 
     rq_job = get_queue("ingest").enqueue("worker.app.jobs.ingest_job", run.id, job.id)
     set_job_rq_id(session, job.id, rq_job.id)
@@ -195,3 +223,47 @@ def get_run_endpoint(
         ),
         snapshot=snapshot,
     )
+
+
+@app.get("/runs/{run_id}/generated-tests/manifest", response_model=GeneratedTestManifestOut)
+def get_generated_tests_manifest_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GeneratedTestManifestOut:
+    workspace = require_workspace(session, current_user)
+    manifest = GeneratedTestsService(session, workspace.id).get_generated_test_manifest(run_id)
+    return GeneratedTestManifestOut.model_validate(manifest.model_dump())
+
+
+@app.get("/runs/{run_id}/generated-tests/tree", response_model=GeneratedTestTreeResponse)
+def get_generated_tests_tree_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GeneratedTestTreeResponse:
+    workspace = require_workspace(session, current_user)
+    tree = GeneratedTestsService(session, workspace.id).get_generated_test_tree(run_id)
+    return GeneratedTestTreeResponse.model_validate(tree)
+
+
+@app.get("/runs/{run_id}/generated-tests/file", response_model=GeneratedTestFileContentResponse)
+def get_generated_test_content_endpoint(
+    run_id: str,
+    path: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GeneratedTestFileContentResponse:
+    workspace = require_workspace(session, current_user)
+    payload = GeneratedTestsService(session, workspace.id).get_generated_test_file_content(run_id, path)
+    return GeneratedTestFileContentResponse.model_validate(payload.model_dump())
+
+
+@app.get("/runs/{run_id}/generated-tests/content", response_model=GeneratedTestFileContentResponse, include_in_schema=False)
+def get_generated_test_content_legacy_endpoint(
+    run_id: str,
+    path: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GeneratedTestFileContentResponse:
+    return get_generated_test_content_endpoint(run_id, path, session, current_user)

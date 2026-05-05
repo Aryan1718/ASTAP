@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -79,9 +79,14 @@ class Job(Base):
 
 class Target(Base):
     __tablename__ = "targets"
+    __table_args__ = (
+        Index("targets_run_id_target_key_uidx", "run_id", "target_key", unique=True),
+        Index("targets_run_id_file_path_idx", "run_id", "file_path"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     run_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    target_key: Mapped[str] = mapped_column(Text, nullable=False)
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     symbol: Mapped[str] = mapped_column(Text, nullable=False)

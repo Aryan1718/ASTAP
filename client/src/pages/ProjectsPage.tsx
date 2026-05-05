@@ -26,6 +26,7 @@ export function ProjectsPage() {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [startingRunId, setStartingRunId] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadProjects() {
@@ -125,6 +126,39 @@ export function ProjectsPage() {
     }
   }
 
+  async function handleDeleteProject(project: Project) {
+    if (!session) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove project "${project.name}"? This will delete the project and all related runs, jobs, and targets from the database.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingProjectId(project.id);
+    try {
+      await apiClient.deleteProject(session.access_token, project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setRuns((current) => current.filter((run) => run.project_id !== project.id));
+      notify({
+        title: "Project removed",
+        description: `${project.name} and its related database records were deleted.`,
+        tone: "success",
+      });
+    } catch (err) {
+      notify({
+        title: "Unable to remove project",
+        description: err instanceof Error ? err.message : "Request failed",
+        tone: "error",
+      });
+    } finally {
+      setDeletingProjectId(null);
+    }
+  }
+
   const lastRuns = runs.reduce<Record<string, RunListItem | undefined>>((accumulator, run) => {
     if (!accumulator[run.project_id]) {
       accumulator[run.project_id] = run;
@@ -163,6 +197,8 @@ export function ProjectsPage() {
             onOpenRun={(runId) => navigate(`/app/runs/${runId}`)}
             onStartRun={handleStartRun}
             startingRunId={startingRunId}
+            deletingProjectId={deletingProjectId}
+            onDeleteProject={handleDeleteProject}
           />
         </div>
       </Card>

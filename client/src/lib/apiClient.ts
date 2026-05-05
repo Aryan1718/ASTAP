@@ -1,4 +1,12 @@
-import type { Project, ProjectPayload, RunDetail, RunListItem, RunStart } from "../types/api";
+import type {
+  GeneratedTestFileContent,
+  GeneratedTestManifest,
+  Project,
+  ProjectPayload,
+  RunDetail,
+  RunListItem,
+  RunStart,
+} from "../types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -31,6 +39,24 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
   return (await response.json()) as T;
 }
 
+async function requestVoid(token: string, path: string, init?: RequestInit): Promise<void> {
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Request failed"));
+  }
+}
+
 export const apiClient = {
   listProjects(token: string) {
     return request<Project[]>(token, "/projects");
@@ -39,6 +65,11 @@ export const apiClient = {
     return request<Project>(token, "/projects", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+  deleteProject(token: string, projectId: string) {
+    return requestVoid(token, `/projects/${projectId}`, {
+      method: "DELETE",
     });
   },
   startRun(token: string, projectId: string, ref?: string) {
@@ -52,5 +83,14 @@ export const apiClient = {
   },
   getRun(token: string, runId: string) {
     return request<RunDetail>(token, `/runs/${runId}`);
+  },
+  getGeneratedTestsManifest(token: string, runId: string) {
+    return request<GeneratedTestManifest>(token, `/runs/${runId}/generated-tests/manifest`);
+  },
+  getGeneratedTestContent(token: string, runId: string, path: string) {
+    return request<GeneratedTestFileContent>(
+      token,
+      `/runs/${runId}/generated-tests/content?path=${encodeURIComponent(path)}`
+    );
   },
 };

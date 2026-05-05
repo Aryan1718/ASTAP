@@ -1,4 +1,4 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { Button } from "../ui/Button";
 import { useAuth } from "../../hooks/useAuth";
@@ -10,8 +10,10 @@ const mobileItems = [
 ];
 
 export function Navbar() {
+  const location = useLocation();
   const { signOut, userEmail } = useAuth();
   const { notify } = useToast();
+  const isGeneratedTestsRoute = location.pathname.includes("/generated-tests");
 
   async function handleLogout() {
     try {
@@ -68,21 +70,23 @@ export function Navbar() {
           </Button>
         </div>
       </div>
-      <div className="page-shell flex gap-2 overflow-x-auto pb-4 md:hidden">
-        {mobileItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium ${
-                isActive ? "bg-accent-50 text-accent-700" : "border border-line bg-white text-muted"
-              }`
-            }
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </div>
+      {isGeneratedTestsRoute ? null : (
+        <div className="page-shell flex gap-2 overflow-x-auto pb-4 md:hidden">
+          {mobileItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium ${
+                  isActive ? "bg-accent-50 text-accent-700" : "border border-line bg-white text-muted"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
     </header>
   );
 }
