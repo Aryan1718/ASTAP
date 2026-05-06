@@ -122,8 +122,7 @@ describe("GeneratedTestsPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: /test_get_user_f9e8d7.py/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("def")).toBeInTheDocument();
-      expect(screen.getByText("test_get_user")).toBeInTheDocument();
+      expect(screen.getByText("def test_get_user():")).toBeInTheDocument();
       expect(screen.getByText((content) => content.includes("response.status_code"))).toBeInTheDocument();
     });
   });
@@ -147,7 +146,27 @@ describe("GeneratedTestsPanel", () => {
     const apiFileButton = await screen.findByRole("button", { name: /test_get_user_f9e8d7.py/i });
     await userEvent.click(apiFileButton);
 
-    expect(apiFileButton).toHaveClass("border-accent/25");
+    expect(apiFileButton).toHaveClass("border-[#cbb7fb]");
     expect(apiFileButton).toHaveAttribute("aria-current", "true");
+  });
+
+  it("honors an initial selected path when it matches a generated file", async () => {
+    mockApiClient.getGeneratedTestsManifest.mockResolvedValue(buildManifest());
+    mockApiClient.getGeneratedTestContent.mockImplementation(async (_token, _runId, path) =>
+      buildContent(path, `def ${path.includes("get_user") ? "test_get_user" : "test_parse_config"}():\n    pass\n`)
+    );
+
+    render(
+      <GeneratedTestsPanel
+        token="token"
+        run={buildRun()}
+        initialSelectedPath="generated_tests/api/test_get_user_f9e8d7.py"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("def test_get_user():")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /test_get_user_f9e8d7.py/i })).toHaveAttribute("aria-current", "true");
   });
 });

@@ -98,7 +98,7 @@ export function SignupPage() {
           label="I accept the terms"
           hint="Required to continue."
         />
-        {error && !confirmError ? <p className="m-0 text-sm text-red-600">{error}</p> : null}
+        {error && !confirmError ? <p className="m-0 text-sm text-[#8f4e4e]">{error}</p> : null}
         <Button type="submit" disabled={submitting}>
           {submitting ? "Creating account..." : "Create account"}
         </Button>

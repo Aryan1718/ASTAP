@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { GeneratedTestsPanel } from "../components/run/GeneratedTestsPanel";
 import { Button } from "../components/ui/Button";
@@ -21,6 +21,7 @@ function shouldPoll(run: RunDetail | null) {
 export function GeneratedTestsPage() {
   const { runId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { session } = useAuth();
   const { notify } = useToast();
   const [run, setRun] = useState<RunDetail | null>(null);
@@ -109,7 +110,7 @@ export function GeneratedTestsPage() {
 
   return (
     <div className="grid gap-3">
-      <Card className="rounded-2xl border border-line bg-white px-4 py-3 shadow-soft">
+      <Card className="border border-line bg-transparent px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="m-0 truncate text-sm font-semibold text-ink">
@@ -123,7 +124,7 @@ export function GeneratedTestsPage() {
         </div>
       </Card>
 
-      <GeneratedTestsPanel token={session.access_token} run={run} minimal />
+      <GeneratedTestsPanel token={session.access_token} run={run} minimal initialSelectedPath={searchParams.get("path")} />
     </div>
   );
 }

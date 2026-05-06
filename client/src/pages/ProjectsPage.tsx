@@ -173,7 +173,7 @@ export function ProjectsPage() {
       <SectionHeader
         eyebrow="GitHub Projects"
         title="Add a GitHub project and run the pipeline"
-        description="Register repositories once, then launch and reopen pipeline executions from a much larger project workspace."
+        description="Register repositories once, then launch immutable pipeline runs and reopen generated output from a calmer operational workspace."
         actions={
           runs.length ? (
             <Button variant="ghost" onClick={() => navigate("/app/runs")}>
@@ -185,8 +185,8 @@ export function ProjectsPage() {
       <CreateProjectForm onSubmit={handleCreateProject} loading={creating} />
       <Card className="p-6 md:p-8">
         <div className="border-b border-line/80 pb-5">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Project Library</p>
-          <h2 className="mt-2 text-2xl font-semibold text-ink">Registered GitHub repositories</h2>
+          <p className="section-eyebrow">Project library</p>
+          <h2 className="mt-2 font-display text-[2rem] leading-tight text-ink">Registered GitHub repositories</h2>
           <p className="mt-2 text-sm leading-6 text-muted">Start a new run or reopen the latest execution for each repository.</p>
         </div>
         <div className="mt-5">
@@ -205,8 +205,8 @@ export function ProjectsPage() {
       <Card className="p-6 md:p-8">
         <div className="flex flex-col gap-3 border-b border-line/80 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="m-0 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Recent runs</p>
-            <h2 className="mt-2 text-2xl font-semibold text-ink">Previously generated work stays visible</h2>
+            <p className="section-eyebrow">Recent runs</p>
+            <h2 className="mt-2 font-display text-[2rem] leading-tight text-ink">Previously generated work stays visible</h2>
             <p className="mt-2 text-sm leading-6 text-muted">Open the latest executions directly from here without starting a new run.</p>
           </div>
           {runs.length ? (
@@ -225,7 +225,7 @@ export function ProjectsPage() {
               <button
                 key={run.id}
                 type="button"
-                className="flex w-full flex-col gap-3 rounded-3xl border border-line bg-white px-5 py-4 text-left transition hover:border-accent/30 hover:bg-accent-50/40 md:flex-row md:items-center md:justify-between"
+                className="flex w-full flex-col gap-3 rounded-2xl border border-line bg-white px-5 py-4 text-left transition hover:bg-[#fbf8f5] md:flex-row md:items-center md:justify-between"
                 onClick={() => navigate(`/app/runs/${run.id}`)}
               >
                 <div>

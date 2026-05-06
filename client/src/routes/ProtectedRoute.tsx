@@ -11,7 +11,7 @@ export function ProtectedRoute({ children }: { children: ReactElement }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
         <div className="surface w-full max-w-md p-8 text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-accent/20 border-t-accent" />
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-line border-t-accent" />
           <p className="mt-4 text-sm text-muted">Restoring your workspace session.</p>
         </div>
       </div>

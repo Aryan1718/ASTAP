@@ -1,4 +1,8 @@
 import type {
+  AnalysisReport,
+  AnalysisSummary,
+  ExecutionLog,
+  ExecutionSummary,
   GeneratedTestFileContent,
   GeneratedTestManifest,
   Project,
@@ -83,6 +87,18 @@ export const apiClient = {
   },
   getRun(token: string, runId: string) {
     return request<RunDetail>(token, `/runs/${runId}`);
+  },
+  getExecutionSummary(token: string, runId: string) {
+    return request<ExecutionSummary>(token, `/runs/${runId}/execution-summary`);
+  },
+  getExecutionLog(token: string, runId: string, suite: string) {
+    return request<ExecutionLog>(token, `/runs/${runId}/execution-log?suite=${encodeURIComponent(suite)}`);
+  },
+  getAnalysisSummary(token: string, runId: string) {
+    return request<AnalysisSummary>(token, `/runs/${runId}/analysis-summary`);
+  },
+  getAnalysisReport(token: string, runId: string) {
+    return request<AnalysisReport>(token, `/runs/${runId}/analysis-report`);
   },
   getGeneratedTestsManifest(token: string, runId: string) {
     return request<GeneratedTestManifest>(token, `/runs/${runId}/generated-tests/manifest`);

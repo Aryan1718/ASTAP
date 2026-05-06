@@ -157,7 +157,14 @@ def mark_job_succeeded_with_artifacts(
     session.commit()
 
 
-def mark_job_failed(session: Session, job_id: str, error_message: str) -> None:
+def mark_job_failed(
+    session: Session,
+    job_id: str,
+    error_message: str,
+    *,
+    output_json: dict | None = None,
+    artifacts_json: list[dict] | None = None,
+) -> None:
     session.execute(
         update(Job)
         .where(Job.id == job_id)
@@ -166,6 +173,8 @@ def mark_job_failed(session: Session, job_id: str, error_message: str) -> None:
             finished_at=func.now(),
             updated_at=func.now(),
             error_message=error_message,
+            output_json=output_json if output_json is not None else Job.output_json,
+            artifacts_json=artifacts_json if artifacts_json is not None else Job.artifacts_json,
         )
     )
     session.commit()
@@ -197,6 +206,15 @@ def mark_run_failed(session: Session, run_id: str) -> None:
         update(Run)
         .where(Run.id == run_id)
         .values(status="failed", finished_at=func.now(), updated_at=func.now())
+    )
+    session.commit()
+
+
+def update_run_summary(session: Session, run_id: str, summary: dict) -> None:
+    session.execute(
+        update(Run)
+        .where(Run.id == run_id)
+        .values(summary=summary, updated_at=func.now())
     )
     session.commit()
 

@@ -2,7 +2,9 @@ from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from api.app.analysis_results import AnalysisResultsService
 from api.app.auth import CurrentUser, get_current_user
+from api.app.execution_results import ExecutionResultsService
 from api.app.generated_tests import GeneratedTestsService
 from shared.config import settings
 from shared.db import get_session
@@ -26,6 +28,10 @@ from shared.schemas import (
     GeneratedTestFileContentResponse,
     GeneratedTestManifestOut,
     GeneratedTestTreeResponse,
+    ExecutionLogOut,
+    ExecutionSummaryOut,
+    AnalysisReportOut,
+    AnalysisSummaryOut,
     ProjectCreate,
     ProjectOut,
     RunCreate,
@@ -37,7 +43,7 @@ from shared.schemas import (
 )
 
 app = FastAPI(title="Automated Testing Platform API")
-RUN_STAGE_ORDER = ["ingest", "discover", "generate_tests"]
+RUN_STAGE_ORDER = ["ingest", "discover", "generate_tests", "execute_tests", "analyze"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.api_cors_origin],
@@ -131,6 +137,8 @@ def create_run_endpoint(
     job = create_job(session, run_id=run.id, stage="ingest")
     create_job(session, run_id=run.id, stage="discover")
     create_job(session, run_id=run.id, stage="generate_tests")
+    create_job(session, run_id=run.id, stage="execute_tests")
+    create_job(session, run_id=run.id, stage="analyze")
 
     rq_job = get_queue("ingest").enqueue("worker.app.jobs.ingest_job", run.id, job.id)
     set_job_rq_id(session, job.id, rq_job.id)
@@ -225,6 +233,51 @@ def get_run_endpoint(
     )
 
 
+@app.get("/runs/{run_id}/execution-summary", response_model=ExecutionSummaryOut)
+def get_execution_summary_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> ExecutionSummaryOut:
+    workspace = require_workspace(session, current_user)
+    summary = ExecutionResultsService(session, workspace.id).get_execution_summary(run_id)
+    return ExecutionSummaryOut.model_validate(summary)
+
+
+@app.get("/runs/{run_id}/execution-log", response_model=ExecutionLogOut)
+def get_execution_log_endpoint(
+    run_id: str,
+    suite: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> ExecutionLogOut:
+    workspace = require_workspace(session, current_user)
+    payload = ExecutionResultsService(session, workspace.id).get_execution_log(run_id, suite)
+    return ExecutionLogOut.model_validate(payload)
+
+
+@app.get("/runs/{run_id}/analysis-summary", response_model=AnalysisSummaryOut)
+def get_analysis_summary_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> AnalysisSummaryOut:
+    workspace = require_workspace(session, current_user)
+    summary = AnalysisResultsService(session, workspace.id).get_analysis_summary(run_id)
+    return AnalysisSummaryOut.model_validate(summary)
+
+
+@app.get("/runs/{run_id}/analysis-report", response_model=AnalysisReportOut)
+def get_analysis_report_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> AnalysisReportOut:
+    workspace = require_workspace(session, current_user)
+    payload = AnalysisResultsService(session, workspace.id).get_analysis_report(run_id)
+    return AnalysisReportOut.model_validate(payload)
+
+
 @app.get("/runs/{run_id}/generated-tests/manifest", response_model=GeneratedTestManifestOut)
 def get_generated_tests_manifest_endpoint(
     run_id: str,
@@ -236,7 +289,7 @@ def get_generated_tests_manifest_endpoint(
     return GeneratedTestManifestOut.model_validate(manifest.model_dump())
 
 
-@app.get("/runs/{run_id}/generated-tests/tree", response_model=GeneratedTestTreeResponse)
+@app.get("/runs/{run_id}/generated-tests/tree", response_model=GeneratedTestTreeResponse, response_model_exclude_none=True)
 def get_generated_tests_tree_endpoint(
     run_id: str,
     session: Session = Depends(get_session),

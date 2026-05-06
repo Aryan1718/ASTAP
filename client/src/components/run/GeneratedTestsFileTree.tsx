@@ -65,9 +65,9 @@ export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: Genera
   );
 
   return (
-    <aside className="flex min-h-0 flex-col border-r border-line bg-white">
+    <aside className="flex min-h-0 flex-col border-r border-line bg-transparent">
       <div className="border-b border-line/80 px-4 py-4">
-        <p className="m-0 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Explorer</p>
+        <p className="m-0 font-display text-xs uppercase tracking-[0.12em] text-muted">Explorer</p>
         <p className="mt-1 text-sm text-ink">
           {files.length} file{files.length === 1 ? "" : "s"}
         </p>
@@ -80,7 +80,7 @@ export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: Genera
             <div key={group.key} className="mb-3">
               <button
                 type="button"
-                className="focus-ring flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-sm font-semibold text-ink hover:bg-canvas"
+                className="focus-ring flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm text-ink hover:bg-[#fbf8f5]"
                 onClick={() => setOpenGroups((current) => ({ ...current, [group.key]: !isOpen }))}
                 aria-expanded={isOpen}
               >
@@ -88,7 +88,7 @@ export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: Genera
                   <span className="text-muted">{isOpen ? "▾" : "▸"}</span>
                   <span>{group.label}</span>
                 </span>
-                <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">{group.files.length}</span>
+                <span className="rounded-lg border border-line px-2 py-0.5 font-display text-xs uppercase text-muted">{group.files.length}</span>
               </button>
 
               {isOpen ? (
@@ -102,18 +102,18 @@ export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: Genera
                         key={path}
                         type="button"
                         className={cn(
-                          "focus-ring group flex w-full items-start gap-3 rounded-2xl border px-3 py-2.5 text-left transition",
+                          "focus-ring group flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition",
                           isSelected
-                            ? "border-accent/25 bg-accent-50/70 shadow-soft"
-                            : "border-transparent bg-white hover:border-line hover:bg-canvas"
+                            ? "border-[#cbb7fb] bg-[#f4eefc]"
+                            : "border-transparent bg-transparent hover:border-line hover:bg-[#fbf8f5]"
                         )}
                         onClick={() => onSelect(path)}
                         aria-current={isSelected ? "true" : undefined}
                       >
                         <span
                           className={cn(
-                            "mt-1 h-2.5 w-2.5 flex-none rounded-full",
-                            isSelected ? "bg-accent" : "bg-slate-300 group-hover:bg-accent/45"
+                            "mt-1 h-2.5 w-2.5 flex-none",
+                            isSelected ? "bg-[#714cb6]" : "bg-[#d5d0ca] group-hover:bg-[#cbb7fb]"
                           )}
                         />
                         <span className="min-w-0 flex-1">

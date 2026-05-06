@@ -12,7 +12,7 @@ export function GeneratedTestsHeader({ manifest, runStatus, generatedCount }: Ge
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line/80 px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="rounded-full border border-line bg-canvas px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+        <span className="rounded-lg border border-line bg-[#f7f3ee] px-3 py-1 font-display text-xs uppercase tracking-[0.12em] text-ink">
           Generated Tests
         </span>
         <p className="m-0 text-sm text-muted">

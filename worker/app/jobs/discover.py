@@ -33,6 +33,44 @@ logger = logging.getLogger(__name__)
 
 EXCLUDED_DIRS = {".git", ".venv", "__pycache__", "build", "dist", "node_modules", "venv"}
 HTTP_METHODS = {"get", "post", "put", "delete", "patch"}
+REQUEST_INPUT_ANNOTATIONS = {"Request", "Body", "Payload"}
+QUERY_INPUT_ANNOTATIONS = {"Query"}
+PATH_INPUT_ANNOTATIONS = {"Path"}
+FILE_INPUT_ANNOTATIONS = {"File", "UploadFile"}
+AUTH_DEPENDENCY_HINTS = {"Depends", "Security"}
+FILESYSTEM_CALLS = {
+    "open",
+    "Path.open",
+    "Path.read_bytes",
+    "Path.read_text",
+    "Path.write_bytes",
+    "Path.write_text",
+    "os.open",
+    "os.remove",
+    "os.unlink",
+    "shutil.copy",
+    "shutil.copyfile",
+    "shutil.move",
+    "shutil.rmtree",
+}
+COMMAND_EXECUTION_CALLS = {
+    "os.system",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.Popen",
+    "subprocess.run",
+}
+UNSAFE_DESERIALIZATION_CALLS = {
+    "marshal.load",
+    "marshal.loads",
+    "pickle.load",
+    "pickle.loads",
+    "yaml.full_load",
+    "yaml.load",
+}
+NETWORK_CALL_PREFIXES = ("httpx.", "requests.", "urllib.request.")
+AUTH_HINT_KEYWORDS = ("auth", "login", "permission", "role", "scope", "jwt", "token", "current_user")
 
 
 def discover_job(run_id: str, job_id: str) -> None:
@@ -140,6 +178,11 @@ def extract_targets_from_module(relative_path: Path, source: str, tree: ast.Modu
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             decorators = [decorator_name(decorator) for decorator in node.decorator_list]
+            security_metadata = analyze_security_metadata(
+                node=node,
+                target_type="SERVICE_FUNCTION",
+                decorators=decorators,
+            )
             targets.append(
                 build_rich_target(
                     target_type="SERVICE_FUNCTION",
@@ -149,17 +192,35 @@ def extract_targets_from_module(relative_path: Path, source: str, tree: ast.Modu
                     line_start=node.lineno,
                     line_end=getattr(node, "end_lineno", node.lineno),
                     decorators=decorators,
-                    framework_hints=["pytest"],
+                    framework_hints=sorted({"pytest", *security_metadata["framework_hints"]}),
                     recommended_test_kind="unit",
                     priority_score=0.5,
                     language="python",
                     docstring=ast.get_docstring(node),
+                    dependency_hints=security_metadata["dependency_hints"],
+                    risk_tags=security_metadata["risk_tags"],
+                    input_sources=security_metadata["input_sources"],
+                    dangerous_sinks=security_metadata["dangerous_sinks"],
+                    auth_hints=security_metadata["auth_hints"],
+                    execution_context=build_execution_context(
+                        relative_path=relative_path,
+                        target_type="SERVICE_FUNCTION",
+                        symbol=node.name,
+                        framework_hints=sorted({"pytest", *security_metadata["framework_hints"]}),
+                        route_path=None,
+                        decorators=decorators,
+                    ),
                     source_excerpt=source_excerpt_for_node(source, node),
                 )
             )
             targets.extend(fastapi_targets(relative_path, source, node))
         elif isinstance(node, ast.ClassDef):
             decorators = [decorator_name(decorator) for decorator in node.decorator_list]
+            security_metadata = analyze_security_metadata(
+                node=node,
+                target_type="SERVICE_FUNCTION",
+                decorators=decorators,
+            )
             targets.append(
                 build_rich_target(
                     target_type="SERVICE_FUNCTION",
@@ -170,11 +231,24 @@ def extract_targets_from_module(relative_path: Path, source: str, tree: ast.Modu
                     line_end=getattr(node, "end_lineno", node.lineno),
                     class_name=node.name,
                     decorators=decorators,
-                    framework_hints=["pytest"],
+                    framework_hints=sorted({"pytest", *security_metadata["framework_hints"]}),
                     recommended_test_kind="unit",
                     priority_score=0.55,
                     language="python",
                     docstring=ast.get_docstring(node),
+                    dependency_hints=security_metadata["dependency_hints"],
+                    risk_tags=security_metadata["risk_tags"],
+                    input_sources=security_metadata["input_sources"],
+                    dangerous_sinks=security_metadata["dangerous_sinks"],
+                    auth_hints=security_metadata["auth_hints"],
+                    execution_context=build_execution_context(
+                        relative_path=relative_path,
+                        target_type="SERVICE_FUNCTION",
+                        symbol=node.name,
+                        framework_hints=sorted({"pytest", *security_metadata["framework_hints"]}),
+                        route_path=None,
+                        decorators=decorators,
+                    ),
                     source_excerpt=source_excerpt_for_node(source, node),
                 )
             )
@@ -199,6 +273,12 @@ def build_rich_target(
     priority_score: float | None = None,
     language: str | None = None,
     docstring: str | None = None,
+    dependency_hints: list[str] | None = None,
+    risk_tags: list[str] | None = None,
+    input_sources: list[str] | None = None,
+    dangerous_sinks: list[str] | None = None,
+    auth_hints: list[str] | None = None,
+    execution_context: dict[str, object] | None = None,
     source_excerpt: str | None = None,
 ) -> RichTargetArtifact:
     file_path = relative_path.as_posix()
@@ -226,6 +306,12 @@ def build_rich_target(
         priority_score=priority_score,
         language=language,
         docstring=docstring,
+        dependency_hints=dependency_hints or [],
+        risk_tags=risk_tags or [],
+        input_sources=input_sources or [],
+        dangerous_sinks=dangerous_sinks or [],
+        auth_hints=auth_hints or [],
+        execution_context=execution_context or {},
         source_excerpt=source_excerpt,
     )
 
@@ -292,6 +378,12 @@ def fastapi_targets(
             continue
         if not decorator.args or not isinstance(decorator.args[0], ast.Constant) or not isinstance(decorator.args[0].value, str):
             continue
+        security_metadata = analyze_security_metadata(
+            node=node,
+            target_type="API_ENDPOINT",
+            decorators=decorators,
+            route_path=decorator.args[0].value,
+        )
 
         targets.append(
             build_rich_target(
@@ -302,17 +394,259 @@ def fastapi_targets(
                 line_start=node.lineno,
                 line_end=getattr(node, "end_lineno", node.lineno),
                 decorators=decorators,
-                framework_hints=["fastapi", "pytest"],
+                framework_hints=sorted({"fastapi", "pytest", *security_metadata["framework_hints"]}),
                 http_method=decorator.func.attr.upper(),
                 route_path=decorator.args[0].value,
                 recommended_test_kind="api",
                 priority_score=0.95,
                 language="python",
                 docstring=ast.get_docstring(node),
+                dependency_hints=security_metadata["dependency_hints"],
+                risk_tags=security_metadata["risk_tags"],
+                input_sources=security_metadata["input_sources"],
+                dangerous_sinks=security_metadata["dangerous_sinks"],
+                auth_hints=security_metadata["auth_hints"],
+                execution_context=build_execution_context(
+                    relative_path=relative_path,
+                    target_type="API_ENDPOINT",
+                    symbol=node.name,
+                    framework_hints=sorted({"fastapi", "pytest", *security_metadata["framework_hints"]}),
+                    route_path=decorator.args[0].value,
+                    decorators=decorators,
+                ),
                 source_excerpt=source_excerpt_for_node(source, node),
             )
         )
     return targets
+
+
+def analyze_security_metadata(
+    *,
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+    target_type: str,
+    decorators: list[str],
+    route_path: str | None = None,
+) -> dict[str, list[str]]:
+    input_sources: set[str] = set()
+    dangerous_sinks: set[str] = set()
+    auth_hints: set[str] = set()
+    dependency_hints: set[str] = set()
+    framework_hints: set[str] = set()
+
+    if target_type == "API_ENDPOINT":
+        input_sources.add("public_input")
+        framework_hints.add("fastapi")
+        if route_path and "{" in route_path and "}" in route_path:
+            input_sources.add("path_parameter")
+
+    for decorator in decorators:
+        dependency_hints.add(decorator)
+        if "router." in decorator or "app." in decorator:
+            framework_hints.add("fastapi")
+        if contains_auth_hint(decorator):
+            auth_hints.add("auth_required")
+
+    for arg_name in function_argument_names(node):
+        if target_type == "SERVICE_FUNCTION":
+            input_sources.add("function_parameter")
+        if arg_name in {"request", "body", "payload", "data"}:
+            input_sources.add("request_body")
+        if arg_name in {"query", "q", "search", "filter"}:
+            input_sources.add("query_parameter")
+        if arg_name in {"file", "filename", "filepath", "path"}:
+            input_sources.add("file_input")
+        if arg_name in {"user", "current_user", "token"}:
+            auth_hints.add("auth_context_argument")
+
+    for metadata in parameter_metadata(node):
+        annotation = metadata["annotation"]
+        default_call = metadata["default_call"]
+
+        if annotation in REQUEST_INPUT_ANNOTATIONS:
+            input_sources.add("request_body")
+        if annotation in QUERY_INPUT_ANNOTATIONS:
+            input_sources.add("query_parameter")
+        if annotation in PATH_INPUT_ANNOTATIONS:
+            input_sources.add("path_parameter")
+        if annotation in FILE_INPUT_ANNOTATIONS:
+            input_sources.add("file_input")
+        if annotation in {"Request"}:
+            input_sources.add("public_input")
+
+        if default_call in AUTH_DEPENDENCY_HINTS and contains_auth_hint(metadata["default_call_arg"]):
+            auth_hints.add("auth_required")
+            dependency_hints.add(f"{default_call}({metadata['default_call_arg']})")
+        elif contains_auth_hint(annotation):
+            auth_hints.add("auth_context_argument")
+
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            call_name = decorator_name(child.func)
+            if call_name:
+                dependency_hints.add(call_name)
+
+            if call_name in FILESYSTEM_CALLS or call_name.startswith("Path."):
+                dangerous_sinks.add("filesystem_access")
+            if call_name in COMMAND_EXECUTION_CALLS:
+                dangerous_sinks.add("command_execution")
+                if keyword_is_true(child, "shell"):
+                    dangerous_sinks.add("shell_usage")
+            if call_name.endswith(".execute") or call_name.endswith(".executemany"):
+                dangerous_sinks.add("database_access")
+            if call_name in UNSAFE_DESERIALIZATION_CALLS:
+                dangerous_sinks.add("deserialization")
+            if call_name.startswith(NETWORK_CALL_PREFIXES):
+                dangerous_sinks.add("network_access")
+
+            if contains_auth_hint(call_name):
+                auth_hints.add("auth_required")
+            if call_name.startswith("subprocess."):
+                framework_hints.add("subprocess")
+            if call_name.startswith(("requests.", "httpx.", "urllib.request.")):
+                framework_hints.add("http_client")
+            if call_name.startswith(("sqlalchemy.", "session.", "cursor.")) or call_name.endswith(".execute"):
+                framework_hints.add("database")
+
+        if isinstance(child, ast.Import):
+            for alias in child.names:
+                dependency_hints.add(alias.name)
+        elif isinstance(child, ast.ImportFrom):
+            module = child.module or ""
+            if module:
+                dependency_hints.add(module)
+
+    if target_type == "API_ENDPOINT" and not auth_hints:
+        auth_hints.add("auth_missing_or_unclear")
+
+    risk_tags = derive_risk_tags(
+        target_type=target_type,
+        input_sources=input_sources,
+        dangerous_sinks=dangerous_sinks,
+        auth_hints=auth_hints,
+    )
+
+    return {
+        "dependency_hints": sorted(dependency_hints),
+        "risk_tags": sorted(risk_tags),
+        "input_sources": sorted(input_sources),
+        "dangerous_sinks": sorted(dangerous_sinks),
+        "auth_hints": sorted(auth_hints),
+        "framework_hints": sorted(framework_hints),
+    }
+
+
+def function_argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> list[str]:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return []
+
+    args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    names = [arg.arg for arg in args if arg.arg not in {"self", "cls"}]
+    if node.args.vararg is not None and node.args.vararg.arg not in {"self", "cls"}:
+        names.append(node.args.vararg.arg)
+    if node.args.kwarg is not None and node.args.kwarg.arg not in {"self", "cls"}:
+        names.append(node.args.kwarg.arg)
+    return names
+
+
+def parameter_metadata(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> list[dict[str, str]]:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return []
+
+    metadata: list[dict[str, str]] = []
+    positional = [*node.args.posonlyargs, *node.args.args]
+    positional_defaults_start = len(positional) - len(node.args.defaults)
+
+    for index, arg in enumerate(positional):
+        metadata.append(
+            {
+                "name": arg.arg,
+                "annotation": annotation_name(arg.annotation),
+                "default_call": default_call_name(default_for_index(index, positional_defaults_start, node.args.defaults)),
+                "default_call_arg": default_call_first_arg(default_for_index(index, positional_defaults_start, node.args.defaults)),
+            }
+        )
+
+    for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
+        metadata.append(
+            {
+                "name": arg.arg,
+                "annotation": annotation_name(arg.annotation),
+                "default_call": default_call_name(default),
+                "default_call_arg": default_call_first_arg(default),
+            }
+        )
+
+    return metadata
+
+
+def annotation_name(annotation: ast.expr | None) -> str:
+    if annotation is None:
+        return ""
+    return decorator_name(annotation)
+
+
+def default_call_name(default: ast.expr | None) -> str:
+    if not isinstance(default, ast.Call):
+        return ""
+    return decorator_name(default.func)
+
+
+def default_call_first_arg(default: ast.expr | None) -> str:
+    if not isinstance(default, ast.Call) or not default.args:
+        return ""
+    first_arg = default.args[0]
+    if isinstance(first_arg, ast.Name):
+        return first_arg.id
+    if isinstance(first_arg, ast.Attribute):
+        return decorator_name(first_arg)
+    return ""
+
+
+def contains_auth_hint(value: str) -> bool:
+    lower_value = value.lower()
+    return any(keyword in lower_value for keyword in AUTH_HINT_KEYWORDS)
+
+
+def keyword_is_true(node: ast.Call, keyword_name: str) -> bool:
+    for keyword in node.keywords:
+        if keyword.arg != keyword_name:
+            continue
+        if isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
+            return True
+    return False
+
+
+def derive_risk_tags(
+    *,
+    target_type: str,
+    input_sources: set[str],
+    dangerous_sinks: set[str],
+    auth_hints: set[str],
+) -> set[str]:
+    risk_tags = set(input_sources)
+    risk_tags.update(dangerous_sinks)
+
+    if target_type == "API_ENDPOINT":
+        risk_tags.add("http_entrypoint")
+
+    if "auth_required" in auth_hints:
+        risk_tags.add("auth_required")
+    if "auth_missing_or_unclear" in auth_hints:
+        risk_tags.add("auth_missing_or_unclear")
+
+    has_user_controlled_input = bool(input_sources.intersection({"public_input", "function_parameter", "query_parameter", "request_body", "path_parameter", "file_input"}))
+    if has_user_controlled_input and "filesystem_access" in dangerous_sinks:
+        risk_tags.add("path_traversal_candidate")
+    if has_user_controlled_input and "command_execution" in dangerous_sinks:
+        risk_tags.add("command_injection_candidate")
+    if has_user_controlled_input and "database_access" in dangerous_sinks:
+        risk_tags.add("sql_injection_candidate")
+    if has_user_controlled_input and "network_access" in dangerous_sinks:
+        risk_tags.add("ssrf_candidate")
+    if has_user_controlled_input and "deserialization" in dangerous_sinks:
+        risk_tags.add("unsafe_deserialization_candidate")
+
+    return risk_tags
 
 
 def decorator_name(node: ast.expr) -> str:
@@ -340,3 +674,47 @@ def source_excerpt_for_node(source: str, node: ast.AST) -> str | None:
     if not excerpt:
         return None
     return excerpt[:1200]
+
+
+def build_execution_context(
+    *,
+    relative_path: Path,
+    target_type: str,
+    symbol: str,
+    framework_hints: list[str],
+    route_path: str | None,
+    decorators: list[str],
+) -> dict[str, object]:
+    module_path = module_path_for_file(relative_path)
+    import_hint = f"{module_path}:{symbol}" if module_path else symbol
+    context: dict[str, object] = {
+        "module_path": module_path,
+        "import_hint": import_hint,
+        "framework_hints": framework_hints,
+    }
+    if target_type == "API_ENDPOINT":
+        fastapi_router_symbol = infer_fastapi_router_symbol(decorators)
+        context.update(
+            {
+                "route_path": route_path,
+                "fastapi_router_symbol": fastapi_router_symbol,
+                "fastapi_test_client_candidate": "fastapi" in framework_hints and bool(fastapi_router_symbol),
+            }
+        )
+    return context
+
+
+def module_path_for_file(relative_path: Path) -> str:
+    parts = list(relative_path.with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def infer_fastapi_router_symbol(decorators: list[str]) -> str | None:
+    for decorator in decorators:
+        if decorator.startswith("router."):
+            return "router"
+        if decorator.startswith("app."):
+            return "app"
+    return None

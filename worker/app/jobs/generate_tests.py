@@ -3,6 +3,7 @@ import json
 import logging
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from shutil import rmtree
 
@@ -11,14 +12,17 @@ from shared.db import SessionLocal
 from shared.models import Target
 from shared.repository import (
     claim_job,
+    get_job_by_stage,
     get_run,
     list_targets_for_run,
     mark_job_failed,
     mark_job_succeeded_with_artifacts,
     mark_run_failed,
     mark_run_running,
-    mark_run_succeeded,
+    set_job_rq_id,
 )
+from shared.queue import get_queue
+from shared.security_recipes import SecurityRecipeMatch, match_security_recipes
 from shared.targets import (
     DiscoverTargetsArtifact,
     GeneratedTestManifestEntry,
@@ -29,7 +33,7 @@ from shared.targets import (
     SourceContext,
     artifact_target_by_key,
     build_generated_test_manifest,
-    generated_test_relative_path,
+    generated_security_test_relative_path,
 )
 from shared.storage import download_storage_object, download_storage_object_text, upload_file_to_storage
 from worker.app.jobs.common import safe_extract_tar_gz
@@ -46,6 +50,19 @@ DANGEROUS_PATTERNS = (
     "httpx.",
     "urllib.request",
 )
+
+
+@dataclass(slots=True)
+class RecipeGenerationCandidate:
+    target_row: SlimTargetRow
+    target_artifact: RichTargetArtifact
+    recipe_match: SecurityRecipeMatch
+
+
+@dataclass(slots=True)
+class RunnabilityGateResult:
+    allowed: bool
+    reason: str | None = None
 
 
 def generate_tests_job(run_id: str, job_id: str) -> None:
@@ -80,28 +97,57 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
         provider = OpenAIGenerateTestsProvider(api_key=api_key, config=config)
         db_targets = list_targets_for_run(session, run.id)
 
-        selected_targets = select_targets_for_generation(
+        selected_candidates, skipped_entries = select_recipe_candidates_for_generation(
             db_targets=db_targets,
             targets_by_key=targets_by_key,
             config=config,
         )
 
-        manifest_entries: list[GeneratedTestManifestEntry] = []
+        manifest_entries: list[GeneratedTestManifestEntry] = list(skipped_entries)
         uploaded_artifacts: list[dict] = []
         generated_count = 0
-        skipped_count = 0
+        skipped_count = len(skipped_entries)
+        runnable_candidates_count = 0
 
-        for target_row, target_artifact in selected_targets:
-            packet = build_generation_packet(run.id, repo_path, target_row, target_artifact)
+        for candidate in selected_candidates:
+            gate_result = evaluate_runnability(candidate.target_artifact)
+            if not gate_result.allowed:
+                manifest_entries.append(
+                    build_skipped_manifest_entry(
+                        candidate.target_row,
+                        gate_result.reason or "runnability_gate_failed",
+                        recipe_match=candidate.recipe_match,
+                    )
+                )
+                skipped_count += 1
+                continue
+
+            runnable_candidates_count += 1
+            packet = build_generation_packet(
+                run.id,
+                repo_path,
+                candidate.target_row,
+                candidate.target_artifact,
+                candidate.recipe_match,
+            )
             if packet is None:
                 manifest_entries.append(
-                    build_skipped_manifest_entry(target_row, "source_context_missing")
+                    build_skipped_manifest_entry(
+                        candidate.target_row,
+                        "source_context_missing",
+                        recipe_match=candidate.recipe_match,
+                    )
                 )
                 skipped_count += 1
                 continue
 
             output_path = Path(
-                generated_test_relative_path(config.output_dir, target_row.target_type, target_row.symbol, target_row.target_key)
+                generated_security_test_relative_path(
+                    config.output_dir,
+                    candidate.target_row.symbol,
+                    candidate.recipe_match.recipe_id,
+                    candidate.target_row.target_key,
+                )
             )
             full_output_path = temp_dir / output_path
             full_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,11 +167,17 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
                 except Exception as repair_exc:  # noqa: BLE001
                     logger.warning(
                         "Generate tests skipped target %s for run %s due to invalid output: %s",
-                        target_row.target_key,
+                        candidate.target_row.target_key,
                         run.id,
                         repair_exc,
                     )
-                    manifest_entries.append(build_skipped_manifest_entry(target_row, str(repair_exc)))
+                    manifest_entries.append(
+                        build_skipped_manifest_entry(
+                            candidate.target_row,
+                            str(repair_exc),
+                            recipe_match=candidate.recipe_match,
+                        )
+                    )
                     skipped_count += 1
                     continue
 
@@ -145,30 +197,26 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
                     "bucket": settings.supabase_storage_bucket,
                     "key": object_key,
                     "path": output_path.as_posix(),
-                    "target_key": target_row.target_key,
+                    "target_key": candidate.target_row.target_key,
+                    "recipe_id": candidate.recipe_match.recipe_id,
                 }
             )
             manifest_entries.append(
                 GeneratedTestManifestEntry(
-                    target_key=target_row.target_key,
-                    target_type=target_row.target_type,
-                    symbol=target_row.symbol,
-                    source_file=target_row.file_path,
+                    target_key=candidate.target_row.target_key,
+                    target_type=candidate.target_row.target_type,
+                    symbol=candidate.target_row.symbol,
+                    source_file=candidate.target_row.file_path,
                     generated_test_file=output_path.as_posix(),
-                    test_kind=test_kind_for_target_type(target_row.target_type),
+                    test_kind=candidate.recipe_match.test_kind,
                     status=GeneratedTestStatus.generated,
+                    generation_mode="security_recipe",
+                    recipe_id=candidate.recipe_match.recipe_id,
+                    recipe_name=candidate.recipe_match.name,
+                    risk_tags=candidate.target_artifact.risk_tags,
                 )
             )
             generated_count += 1
-
-        for skipped_entry in build_unselected_target_entries(
-            db_targets=db_targets,
-            selected_target_keys={target_row.target_key for target_row, _ in selected_targets},
-            targets_by_key=targets_by_key,
-            config=config,
-        ):
-            manifest_entries.append(skipped_entry)
-            skipped_count += 1
 
         manifest = build_generated_test_manifest(run.id, manifest_entries)
         manifest_path = output_root / "test_index.json"
@@ -208,7 +256,7 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
             }
         )
 
-        total_supported_targets = len(selected_targets)
+        total_supported_targets = len(selected_candidates)
         artifact_paths = [artifact["path"] for artifact in uploaded_artifacts if "path" in artifact]
         logger.info(
             "Generate tests completed for run %s: total_supported_targets=%s generated_files=%s skipped_targets=%s artifact_paths=%s",
@@ -219,7 +267,7 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
             artifact_paths,
         )
 
-        if total_supported_targets > 0 and generated_count == 0:
+        if runnable_candidates_count > 0 and generated_count == 0:
             raise RuntimeError("Generate tests failed for all supported targets")
 
         mark_job_succeeded_with_artifacts(
@@ -227,6 +275,7 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
             job_id=job.id,
             output_json={
                 "supported_targets": total_supported_targets,
+                "runnable_targets": runnable_candidates_count,
                 "generated_files": generated_count,
                 "skipped_targets": skipped_count,
                 "manifest_path": manifest_key,
@@ -234,7 +283,12 @@ def generate_tests_job(run_id: str, job_id: str) -> None:
             },
             artifacts_json=uploaded_artifacts,
         )
-        mark_run_succeeded(session, run.id)
+        execute_tests = get_job_by_stage(session, run.id, "execute_tests")
+        if execute_tests is None:
+            raise RuntimeError("Execute tests job not found")
+
+        rq_job = get_queue("execute_tests").enqueue("worker.app.jobs.execute_tests_job", run.id, execute_tests.id)
+        set_job_rq_id(session, execute_tests.id, rq_job.id)
     except Exception as exc:  # noqa: BLE001
         mark_job_failed(session, job_id, f"{type(exc).__name__}: {exc}")
         mark_run_failed(session, run_id)
@@ -250,78 +304,53 @@ def load_discover_targets(workspace_id: str, project_id: str, run_id: str) -> Di
     return DiscoverTargetsArtifact.model_validate_json(payload)
 
 
-def select_targets_for_generation(
+def select_recipe_candidates_for_generation(
     *,
     db_targets: list[Target],
     targets_by_key: dict[str, RichTargetArtifact],
     config: GenerateTestsConfig,
-) -> list[tuple[SlimTargetRow, RichTargetArtifact]]:
-    selected: list[tuple[SlimTargetRow, RichTargetArtifact]] = []
+) -> tuple[list[RecipeGenerationCandidate], list[GeneratedTestManifestEntry]]:
+    selected: list[RecipeGenerationCandidate] = []
+    skipped: list[GeneratedTestManifestEntry] = []
     for target in db_targets:
         if target.target_type == "SERVICE_FUNCTION" and not config.enable_service_functions:
+            skipped.append(build_skipped_manifest_entry(_slim_target_row_from_db(target), "target_type_disabled:SERVICE_FUNCTION"))
             continue
         if target.target_type == "API_ENDPOINT" and not config.enable_api_endpoints:
+            skipped.append(build_skipped_manifest_entry(_slim_target_row_from_db(target), "target_type_disabled:API_ENDPOINT"))
             continue
         if target.target_type not in SUPPORTED_TARGET_TYPES:
+            skipped.append(build_skipped_manifest_entry(_slim_target_row_from_db(target), f"unsupported_target_type:{target.target_type}"))
             continue
 
         artifact_target = targets_by_key.get(target.target_key)
         if artifact_target is None:
+            skipped.append(build_skipped_manifest_entry(_slim_target_row_from_db(target), "target_key_missing_from_discover_artifact"))
             continue
 
-        selected.append(
-            (
-                SlimTargetRow(
-                    run_id=target.run_id,
-                    target_key=target.target_key,
-                    target_type=target.target_type,
-                    file_path=target.file_path,
-                    symbol=target.symbol,
-                    signature=target.signature,
-                    metadata=target.target_metadata,
-                ),
-                artifact_target,
-            )
-        )
-        if len(selected) >= config.max_targets_per_run:
-            break
-    return selected
-
-
-def build_unselected_target_entries(
-    *,
-    db_targets: list[Target],
-    selected_target_keys: set[str],
-    targets_by_key: dict[str, RichTargetArtifact],
-    config: GenerateTestsConfig,
-) -> list[GeneratedTestManifestEntry]:
-    entries: list[GeneratedTestManifestEntry] = []
-    for target in db_targets:
-        if target.target_key in selected_target_keys:
+        target_row = _slim_target_row_from_db(target)
+        recipe_matches = match_security_recipes(artifact_target)
+        if not recipe_matches:
+            skipped.append(build_skipped_manifest_entry(target_row, "no_security_recipe_match"))
             continue
 
-        if target.target_type == "SERVICE_FUNCTION" and not config.enable_service_functions:
-            reason = "target_type_disabled:SERVICE_FUNCTION"
-        elif target.target_type == "API_ENDPOINT" and not config.enable_api_endpoints:
-            reason = "target_type_disabled:API_ENDPOINT"
-        elif target.target_type not in SUPPORTED_TARGET_TYPES:
-            reason = f"unsupported_target_type:{target.target_type}"
-        elif target.target_key not in targets_by_key:
-            reason = "target_key_missing_from_discover_artifact"
-        else:
-            reason = "max_targets_limit_reached"
-
-        entries.append(
-            GeneratedTestManifestEntry(
-                target_key=target.target_key,
-                target_type=target.target_type,
-                symbol=target.symbol,
-                source_file=target.file_path,
-                status=GeneratedTestStatus.skipped,
-                skip_reason=reason,
+        for recipe_match in recipe_matches:
+            candidate = RecipeGenerationCandidate(
+                target_row=target_row,
+                target_artifact=artifact_target,
+                recipe_match=recipe_match,
             )
-        )
-    return entries
+            if len(selected) >= config.max_targets_per_run:
+                skipped.append(
+                    build_skipped_manifest_entry(
+                        target_row,
+                        "max_targets_limit_reached",
+                        recipe_match=recipe_match,
+                    )
+                )
+                continue
+            selected.append(candidate)
+    return selected, skipped
 
 
 def build_generation_packet(
@@ -329,6 +358,7 @@ def build_generation_packet(
     repo_path: Path,
     target_db: SlimTargetRow,
     target_artifact: RichTargetArtifact,
+    recipe_match: SecurityRecipeMatch,
 ) -> GenerationPacket | None:
     line_start = target_artifact.line_start or target_db.metadata.line_start
     line_end = target_artifact.line_end or target_db.metadata.line_end
@@ -345,6 +375,12 @@ def build_generation_packet(
         target_db=target_db,
         target_artifact=target_artifact,
         source_context=source_context,
+        generation_mode="security_recipe",
+        recipe_id=recipe_match.recipe_id,
+        recipe_name=recipe_match.name,
+        recipe_payload_templates=recipe_match.payload_templates,
+        recipe_expected_secure_behaviors=recipe_match.expected_secure_behaviors,
+        recipe_rationale=recipe_match.rationale,
     )
 
 
@@ -359,13 +395,23 @@ def read_source_context(source_path: Path, file_path: str, line_start: int, line
     )
 
 
-def build_skipped_manifest_entry(target: SlimTargetRow, reason: str) -> GeneratedTestManifestEntry:
+def build_skipped_manifest_entry(
+    target: SlimTargetRow,
+    reason: str,
+    *,
+    recipe_match: SecurityRecipeMatch | None = None,
+) -> GeneratedTestManifestEntry:
     return GeneratedTestManifestEntry(
         target_key=target.target_key,
         target_type=target.target_type,
         symbol=target.symbol,
         source_file=target.file_path,
         status=GeneratedTestStatus.skipped,
+        test_kind=recipe_match.test_kind if recipe_match is not None else None,
+        generation_mode="security_recipe" if recipe_match is not None else None,
+        recipe_id=recipe_match.recipe_id if recipe_match is not None else None,
+        recipe_name=recipe_match.name if recipe_match is not None else None,
+        risk_tags=target.metadata.risk_tags,
         skip_reason=reason,
     )
 
@@ -383,6 +429,9 @@ def render_generated_test_file(packet: GenerationPacket, code: str) -> str:
         [
             "# Generated by Automated Testing Platform",
             f"# run_id: {packet.run_id}",
+            f"# generation_mode: {packet.generation_mode}",
+            f"# recipe_id: {packet.recipe_id or 'n/a'}",
+            f"# recipe_name: {packet.recipe_name or 'n/a'}",
             f"# target_key: {packet.target_db.target_key}",
             f"# target_type: {packet.target_db.target_type}",
             f"# source_file: {packet.target_db.file_path}",
@@ -429,3 +478,37 @@ def create_stage_zip(stage_dir: Path, destination: Path) -> None:
             if path.is_dir():
                 continue
             archive.write(path, arcname=path.relative_to(stage_dir.parent))
+
+
+def _slim_target_row_from_db(target: Target) -> SlimTargetRow:
+    return SlimTargetRow(
+        run_id=target.run_id,
+        target_key=target.target_key,
+        target_type=target.target_type,
+        file_path=target.file_path,
+        symbol=target.symbol,
+        signature=target.signature,
+        metadata=target.target_metadata,
+    )
+
+
+def evaluate_runnability(target: RichTargetArtifact) -> RunnabilityGateResult:
+    execution_context = target.execution_context
+    module_path = execution_context.get("module_path")
+    import_hint = execution_context.get("import_hint")
+    if not isinstance(module_path, str) or not module_path:
+        return RunnabilityGateResult(allowed=False, reason="runnability_missing_module_path")
+    if not isinstance(import_hint, str) or not import_hint:
+        return RunnabilityGateResult(allowed=False, reason="runnability_missing_import_hint")
+
+    if target.target_type == "API_ENDPOINT":
+        fastapi_candidate = execution_context.get("fastapi_test_client_candidate")
+        router_symbol = execution_context.get("fastapi_router_symbol")
+        if "fastapi" not in target.framework_hints:
+            return RunnabilityGateResult(allowed=False, reason="runnability_unsupported_api_framework")
+        if not fastapi_candidate:
+            return RunnabilityGateResult(allowed=False, reason="runnability_missing_fastapi_test_client_context")
+        if not isinstance(router_symbol, str) or not router_symbol:
+            return RunnabilityGateResult(allowed=False, reason="runnability_missing_fastapi_router_symbol")
+
+    return RunnabilityGateResult(allowed=True)

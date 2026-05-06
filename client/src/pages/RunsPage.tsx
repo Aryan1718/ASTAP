@@ -85,7 +85,7 @@ export function RunsPage() {
       <SectionHeader
         eyebrow="Runs"
         title="Run history"
-        description="Every run created in this workspace remains available here, so you can reopen completed work after leaving the detail page."
+        description="Every run created in this workspace stays visible here, with progress, status, and commit resolution presented in one place."
         actions={
           <Button variant="ghost" onClick={() => navigate("/app/projects")}>
             Back to projects
@@ -94,18 +94,24 @@ export function RunsPage() {
       />
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-5">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Queued</p>
-          <p className="mt-2 text-3xl font-semibold text-ink">{queuedCount}</p>
+          <p className="section-eyebrow">Queued</p>
+          <p className="mt-2 font-display text-4xl uppercase leading-none text-ink" style={{ fontWeight: 460 }}>
+            {queuedCount}
+          </p>
           <p className="mt-2 text-sm text-muted">Waiting for worker pickup.</p>
         </Card>
         <Card className="p-5">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Running</p>
-          <p className="mt-2 text-3xl font-semibold text-ink">{runningCount}</p>
+          <p className="section-eyebrow">Running</p>
+          <p className="mt-2 font-display text-4xl uppercase leading-none text-ink" style={{ fontWeight: 460 }}>
+            {runningCount}
+          </p>
           <p className="mt-2 text-sm text-muted">Active executions are polled automatically.</p>
         </Card>
         <Card className="p-5">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Completed</p>
-          <p className="mt-2 text-3xl font-semibold text-ink">{completedCount}</p>
+          <p className="section-eyebrow">Completed</p>
+          <p className="mt-2 font-display text-4xl uppercase leading-none text-ink" style={{ fontWeight: 460 }}>
+            {completedCount}
+          </p>
           <div className="mt-2">
             <StatusBadge status={completedCount ? "succeeded" : "pending"} />
           </div>

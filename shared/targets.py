@@ -4,7 +4,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def compute_target_key(
@@ -34,6 +34,10 @@ class SlimTargetMetadata(BaseModel):
     recommended_test_kind: str | None = None
     priority_score: float | None = None
     language: str | None = None
+    framework_hints: list[str] = Field(default_factory=list)
+    risk_tags: list[str] = Field(default_factory=list)
+    input_sources: list[str] = Field(default_factory=list)
+    dangerous_sinks: list[str] = Field(default_factory=list)
 
 
 class SlimTargetRow(BaseModel):
@@ -67,7 +71,12 @@ class RichTargetArtifact(BaseModel):
     priority_score: float | None = None
     language: str | None = None
     docstring: str | None = None
-    dependency_hints: list[str] | None = None
+    dependency_hints: list[str] = Field(default_factory=list)
+    risk_tags: list[str] = Field(default_factory=list)
+    input_sources: list[str] = Field(default_factory=list)
+    dangerous_sinks: list[str] = Field(default_factory=list)
+    auth_hints: list[str] = Field(default_factory=list)
+    execution_context: dict[str, Any] = Field(default_factory=dict)
     source_excerpt: str | None = None
 
 
@@ -96,6 +105,12 @@ class GenerationPacket(BaseModel):
     target_db: SlimTargetRow
     target_artifact: RichTargetArtifact
     source_context: SourceContext
+    generation_mode: str = "generic"
+    recipe_id: str | None = None
+    recipe_name: str | None = None
+    recipe_payload_templates: list[str] = Field(default_factory=list)
+    recipe_expected_secure_behaviors: list[str] = Field(default_factory=list)
+    recipe_rationale: list[str] = Field(default_factory=list)
 
 
 class GeneratedTestStatus(str, Enum):
@@ -114,6 +129,10 @@ class GeneratedTestManifestEntry(BaseModel):
     generated_test_file: str | None = None
     test_kind: str | None = None
     status: GeneratedTestStatus
+    generation_mode: str | None = None
+    recipe_id: str | None = None
+    recipe_name: str | None = None
+    risk_tags: list[str] = Field(default_factory=list)
     skip_reason: str | None = None
 
 
@@ -146,6 +165,10 @@ def build_slim_target_row(run_id: str, target: RichTargetArtifact) -> SlimTarget
         recommended_test_kind=target.recommended_test_kind,
         priority_score=target.priority_score,
         language=target.language,
+        framework_hints=target.framework_hints,
+        risk_tags=target.risk_tags,
+        input_sources=target.input_sources,
+        dangerous_sinks=target.dangerous_sinks,
     )
     return SlimTargetRow(
         run_id=run_id,
@@ -212,6 +235,11 @@ def generated_test_relative_path(output_dir: str, target_type: str, symbol: str,
 
     filename = f"test_{safe_symbol_name(symbol)}_{short_target_key(target_key)}.py"
     return PurePosixPath(output_dir, subdir, filename).as_posix()
+
+
+def generated_security_test_relative_path(output_dir: str, symbol: str, recipe_id: str, target_key: str) -> str:
+    filename = f"test_{safe_symbol_name(symbol)}_{safe_symbol_name(recipe_id)}_{short_target_key(target_key)}.py"
+    return PurePosixPath(output_dir, "security", filename).as_posix()
 
 
 def target_counts_by_type(targets: list[RichTargetArtifact]) -> dict[str, int]:

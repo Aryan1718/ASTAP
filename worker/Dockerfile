@@ -14,4 +14,4 @@ COPY worker/app /app/worker/app
 
 ENV PYTHONPATH=/app
 
-CMD ["rq", "worker", "ingest", "discover", "generate_tests", "--url", "redis://queue:6379/0"]
+CMD ["rq", "worker", "ingest", "discover", "generate_tests", "execute_tests", "analyze", "--url", "redis://queue:6379/0"]

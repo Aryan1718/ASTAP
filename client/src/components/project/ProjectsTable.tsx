@@ -37,9 +37,11 @@ export function ProjectsTable({
 
   if (!projects.length) {
     return (
-      <div className="flex min-h-80 flex-col items-center justify-center rounded-3xl border border-dashed border-line px-6 py-12 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-accent-50 text-lg font-semibold text-accent-700">GH</div>
-        <h3 className="mt-5 text-2xl font-semibold text-ink">No GitHub projects yet</h3>
+      <div className="flex min-h-80 flex-col items-center justify-center border border-dashed border-line px-6 py-12 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-line bg-[#f7f3ee] font-display text-lg uppercase text-ink">GH</div>
+        <h3 className="mt-5 font-display text-3xl text-ink" style={{ fontWeight: 460 }}>
+          No GitHub projects yet
+        </h3>
         <p className="mt-3 max-w-md text-sm leading-6 text-muted">
           Add your first repository to begin immutable pipeline runs and capture snapshot metadata.
         </p>
@@ -53,29 +55,31 @@ export function ProjectsTable({
         const lastRun = lastRuns[project.id];
 
         return (
-          <div key={project.id} className="rounded-3xl border border-line bg-white p-6 md:p-7">
+          <div key={project.id} className="rounded-2xl border border-line bg-white p-6 md:p-7">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
-                    <p className="m-0 text-2xl font-semibold text-ink">{project.name}</p>
+                    <p className="m-0 font-display text-3xl uppercase leading-tight text-ink" style={{ fontWeight: 460 }}>
+                      {project.name}
+                    </p>
                     <p className="mt-2 break-all text-sm leading-6 text-muted">{project.repo_url}</p>
                   </div>
-                  <div className="rounded-full bg-accent-50 px-4 py-2 text-sm font-semibold text-accent-700">
+                  <div className="rounded-lg border border-line bg-[#f7f3ee] px-4 py-2 font-display text-sm uppercase tracking-[0.1em] text-ink">
                     {project.default_branch}
                   </div>
                 </div>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <div className="rounded-2xl border border-line/80 bg-canvas px-4 py-4">
-                    <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Project ID</p>
+                  <div className="border border-line bg-transparent px-4 py-4">
+                    <p className="m-0 font-display text-xs uppercase tracking-[0.16em] text-muted">Project ID</p>
                     <p className="mt-2 text-sm font-medium text-ink">{project.id.slice(0, 8)}</p>
                   </div>
-                  <div className="rounded-2xl border border-line/80 bg-canvas px-4 py-4">
-                    <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Created</p>
+                  <div className="border border-line bg-transparent px-4 py-4">
+                    <p className="m-0 font-display text-xs uppercase tracking-[0.16em] text-muted">Created</p>
                     <p className="mt-2 text-sm font-medium text-ink">{formatDateTime(project.created_at)}</p>
                   </div>
-                  <div className="rounded-2xl border border-line/80 bg-canvas px-4 py-4">
-                    <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Latest run</p>
+                  <div className="border border-line bg-transparent px-4 py-4">
+                    <p className="m-0 font-display text-xs uppercase tracking-[0.16em] text-muted">Latest run</p>
                     <div className="mt-2 flex min-h-6 items-center gap-2">
                       {lastRun ? <StatusBadge status={lastRun.status} /> : <span className="text-sm text-muted">No runs yet</span>}
                     </div>
