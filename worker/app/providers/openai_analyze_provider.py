@@ -9,6 +9,8 @@ Rules:
 - explain only from the provided evidence
 - do not invent failures, vulnerabilities, or root causes
 - distinguish baseline repository failures from generated test failures
+- state what changed versus the comparison run when trend data is available
+- distinguish new findings from recurring noise and fixed findings
 - mention infrastructure/setup issues explicitly when present
 - keep the output concise and practical
 - output markdown only
@@ -47,6 +49,7 @@ def build_analyze_prompt(evidence_packet: dict) -> str:
         [
             "Summarize this run in concise markdown for an engineer reviewing the results.",
             "Use these sections exactly: `# Run Analysis`, `## Overall`, `## Highest-Signal Findings`, `## Next Steps`.",
+            "When the evidence packet includes trend data, explain what changed since the comparison run.",
             "If there are no meaningful generated findings, say that directly.",
             "Do not claim certainty beyond the evidence packet.",
             "",

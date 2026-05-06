@@ -91,6 +91,39 @@ def test_analysis_summary_endpoint_returns_summary_payload(monkeypatch) -> None:
                         "evidence": ["AssertionError"],
                     }
                 ],
+                "trend": {
+                    "status": "available",
+                    "comparison_run": {
+                        "run_id": "run-0",
+                        "created_at": "2026-05-05T00:00:00+00:00",
+                        "ref_requested": "main",
+                        "ref_resolved": "abc123",
+                        "overall_assessment": "all_passed",
+                    },
+                    "counts": {
+                        "new_findings": 1,
+                        "recurring_findings": 0,
+                        "fixed_findings": 0,
+                        "recurring_noise": 0,
+                    },
+                    "headline": "1 new finding appeared versus the previous analyzed run.",
+                    "new_findings": [
+                        {
+                            "fingerprint": "generated|abc123|path_traversal|product_failure|test_parse_config_path_traversal_abc123.py",
+                            "suite": "generated",
+                            "failure_category": "product_failure",
+                            "headline": "Generated test for `parse_config` failed under `Path Traversal`.",
+                            "target_key": "abc123",
+                            "symbol": "parse_config",
+                            "recipe_id": "path_traversal",
+                            "recipe_name": "Path Traversal",
+                            "generated_test_file": "generated_tests/security/test_parse_config_path_traversal_abc123.py",
+                            "confidence": "high",
+                            "severity": "high",
+                        }
+                    ],
+                    "fixed_findings": [],
+                },
             }
         ),
     )
@@ -104,6 +137,8 @@ def test_analysis_summary_endpoint_returns_summary_payload(monkeypatch) -> None:
     assert payload["analysis_mode"] == "deterministic_plus_llm"
     assert payload["counts"]["high_signal_failures"] == 1
     assert payload["highlights"][0]["severity"] == "high"
+    assert payload["trend"]["counts"]["new_findings"] == 1
+    assert payload["trend"]["comparison_run"]["run_id"] == "run-0"
     assert payload["artifacts"][0]["path"] == "analyze/summary.json"
 
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../lib/apiClient";
-import { cn } from "../../lib/utils";
+import { cn, formatDateTime } from "../../lib/utils";
 import type { AnalysisReport, AnalysisSummary } from "../../types/api";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -389,6 +389,118 @@ export function RunAnalysisPanel({ token, runId, stageStatus }: RunAnalysisPanel
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-line bg-white px-5 py-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase tracking-[0.18em] text-muted">What changed</p>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Compare this run against the most recent earlier analyzed run for the same project.
+            </p>
+          </div>
+          {summary.trend.comparison_run ? (
+            <div className="text-sm text-muted">
+              <p className="m-0 uppercase tracking-[0.12em]">Compared with</p>
+              <p className="mt-1 text-ink">{formatDateTime(summary.trend.comparison_run.created_at)}</p>
+              <p className="mt-1 break-all text-muted">{summary.trend.comparison_run.ref_resolved ?? summary.trend.comparison_run.ref_requested ?? summary.trend.comparison_run.run_id}</p>
+            </div>
+          ) : null}
+        </div>
+
+        {summary.trend.status === "available" ? (
+          <>
+            <p className="mt-4 text-sm leading-6 text-ink">{summary.trend.headline}</p>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">New findings</p>
+                <p className="mt-3 text-3xl text-ink" style={{ fontWeight: 460 }}>
+                  {summary.trend.counts.new_findings}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Recurring findings</p>
+                <p className="mt-3 text-3xl text-ink" style={{ fontWeight: 460 }}>
+                  {summary.trend.counts.recurring_findings}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Fixed findings</p>
+                <p className="mt-3 text-3xl text-ink" style={{ fontWeight: 460 }}>
+                  {summary.trend.counts.fixed_findings}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Recurring noise</p>
+                <p className="mt-3 text-3xl text-ink" style={{ fontWeight: 460 }}>
+                  {summary.trend.counts.recurring_noise}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <div>
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">New findings</p>
+                <div className="mt-3 grid gap-3">
+                  {summary.trend.new_findings.length ? (
+                    summary.trend.new_findings.map((finding) => (
+                      <div key={finding.fingerprint} className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={finding.severity} />
+                          <StatusBadge status={finding.confidence} />
+                          <StatusBadge status={finding.failure_category} />
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-ink">{finding.headline}</p>
+                        {finding.generated_test_file ? (
+                          <Button
+                            variant="ghost"
+                            className="mt-2 px-0 py-0 text-sm"
+                            onClick={() =>
+                              navigate(`/app/runs/${runId}/generated-tests?path=${encodeURIComponent(finding.generated_test_file ?? "")}`)
+                            }
+                          >
+                            Open generated test
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4 text-sm leading-6 text-muted">
+                      No new findings were detected compared with the previous analyzed run.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Fixed findings</p>
+                <div className="mt-3 grid gap-3">
+                  {summary.trend.fixed_findings.length ? (
+                    summary.trend.fixed_findings.map((finding) => (
+                      <div key={finding.fingerprint} className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={finding.severity} />
+                          <StatusBadge status={finding.confidence} />
+                          <StatusBadge status={finding.failure_category} />
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-ink">{finding.headline}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4 text-sm leading-6 text-muted">
+                      No prior findings were cleared compared with the previous analyzed run.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-line bg-[#fbf8f5] px-4 py-4 text-sm leading-6 text-muted">
+            {summary.trend.headline ?? "No earlier analyzed run was available for comparison."}
+          </div>
+        )}
       </div>
     </Card>
   );

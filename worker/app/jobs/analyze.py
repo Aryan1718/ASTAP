@@ -13,6 +13,7 @@ from shared.repository import (
     claim_job,
     get_job_by_stage,
     get_run,
+    list_prior_project_runs,
     list_jobs_for_run,
     mark_job_failed,
     mark_job_succeeded_with_artifacts,
@@ -26,7 +27,7 @@ from shared.targets import DiscoverTargetsArtifact, GeneratedTestManifest
 from worker.app.providers.openai_analyze_provider import OpenAIAnalyzeProvider
 
 logger = logging.getLogger(__name__)
-HEURISTICS_VERSION = 1
+HEURISTICS_VERSION = 2
 RECIPE_SEVERITY_BY_ID = {recipe.recipe_id: recipe.severity.value for recipe in list_security_recipes()}
 
 
@@ -50,7 +51,9 @@ def analyze_job(run_id: str, job_id: str) -> None:
         manifest = _load_generated_manifest(generate_tests_job)
         execution_results = _load_execution_results(execute_tests_job)
         failure_records = _build_failure_records(execute_tests_job, manifest)
-        summary_payload = _build_summary_payload(run.id, execution_results, failure_records)
+        previous_analysis = _load_previous_analysis(session, run)
+        summary_payload = _build_summary_payload(run, execution_results, failure_records, previous_analysis)
+        trend = summary_payload["trend"]
 
         summary_path = temp_dir / "summary.json"
         failures_path = temp_dir / "failures.json"
@@ -71,6 +74,7 @@ def analyze_job(run_id: str, job_id: str) -> None:
                 manifest=manifest,
                 discover_payload=discover_payload,
                 max_failures=analyze_config.max_failures_for_llm,
+                trend=trend,
             )
             try:
                 provider = OpenAIAnalyzeProvider(api_key=settings.openai_api_key, config=analyze_config)
@@ -248,7 +252,7 @@ def _correlate_generated_failure(*, suite_key: str, file_path: str | None, class
     return None
 
 
-def _build_summary_payload(run_id: str, execution_results: dict, failure_records: list[dict]) -> dict:
+def _build_summary_payload(run, execution_results: dict, failure_records: list[dict], previous_analysis: dict | None) -> dict:
     existing_suite = execution_results.get("existing_tests") or {}
     generated_suite = execution_results.get("generated_tests") or {}
     overall_result = execution_results.get("overall_result")
@@ -257,11 +261,14 @@ def _build_summary_payload(run_id: str, execution_results: dict, failure_records
     infrastructure_status = "error" if execution_error or str(overall_result).startswith("environment_") else "ok"
     baseline_repo_status = str(existing_suite.get("status") or "unknown")
     generated_tests_status = str(generated_suite.get("status") or "unknown")
+    recurring_fingerprints = _previous_failure_fingerprints(previous_analysis)
     _apply_failure_heuristics(
         failure_records=failure_records,
         baseline_repo_status=baseline_repo_status,
         infrastructure_status=infrastructure_status,
+        recurring_fingerprints=recurring_fingerprints,
     )
+    trend = _build_trend_payload(run=run, current_failure_records=failure_records, previous_analysis=previous_analysis)
     generated_failure_records = [record for record in failure_records if record["suite"] == "generated"]
 
     generated_unrunnable = _generated_suite_unrunnable(generated_failure_records)
@@ -302,7 +309,7 @@ def _build_summary_payload(run_id: str, execution_results: dict, failure_records
     return {
         "version": 1,
         "heuristics_version": HEURISTICS_VERSION,
-        "run_id": run_id,
+        "run_id": run.id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "overall_assessment": overall_assessment,
         "baseline_repo_status": baseline_repo_status,
@@ -312,6 +319,7 @@ def _build_summary_payload(run_id: str, execution_results: dict, failure_records
         "llm_summary_available": False,
         "counts": counts,
         "highlights": highlights,
+        "trend": trend,
         "artifacts": {
             "summary_json": "analyze/summary.json",
             "failures_json": "analyze/failures.json",
@@ -330,6 +338,146 @@ def _generated_suite_unrunnable(failure_records: list[dict]) -> bool:
         ):
             unrunnable_hits += 1
     return unrunnable_hits == len(failure_records)
+
+
+def _load_previous_analysis(session, run) -> dict | None:
+    for previous_run in list_prior_project_runs(session, run.project_id, run.created_at, run.id):
+        analyze_job = get_job_by_stage(session, previous_run.id, "analyze")
+        if analyze_job is None or analyze_job.status != "succeeded":
+            continue
+        try:
+            previous_summary = _load_analysis_summary_artifact(analyze_job)
+            previous_failures = _load_analysis_failures_artifact(analyze_job)
+        except Exception:  # noqa: BLE001
+            continue
+        if previous_summary is None or previous_failures is None:
+            continue
+        return {
+            "run": previous_run,
+            "summary": previous_summary,
+            "failures": previous_failures,
+        }
+    return None
+
+
+def _load_analysis_summary_artifact(job) -> dict | None:
+    artifact = next((item for item in job.artifacts_json if item.get("artifact_type") == "analysis_summary"), None)
+    if artifact is None:
+        return None
+    return json.loads(download_storage_object_text(artifact["bucket"], artifact["key"]))
+
+
+def _load_analysis_failures_artifact(job) -> list[dict] | None:
+    artifact = next((item for item in job.artifacts_json if item.get("artifact_type") == "analysis_failures"), None)
+    if artifact is None:
+        return None
+    payload = json.loads(download_storage_object_text(artifact["bucket"], artifact["key"]))
+    failures = payload.get("failures")
+    return failures if isinstance(failures, list) else None
+
+
+def _previous_failure_fingerprints(previous_analysis: dict | None) -> set[str]:
+    if previous_analysis is None:
+        return set()
+    fingerprints = set()
+    for record in previous_analysis.get("failures", []):
+        fingerprint = record.get("fingerprint") or _fingerprint_for_record(record)
+        if isinstance(fingerprint, str) and fingerprint:
+            fingerprints.add(fingerprint)
+    return fingerprints
+
+
+def _build_trend_payload(*, run, current_failure_records: list[dict], previous_analysis: dict | None) -> dict:
+    empty_counts = {"new_findings": 0, "recurring_findings": 0, "fixed_findings": 0, "recurring_noise": 0}
+    if previous_analysis is None:
+        return {
+            "status": "unavailable",
+            "comparison_run": None,
+            "counts": empty_counts,
+            "headline": "No earlier analyzed run is available for comparison.",
+            "new_findings": [],
+            "fixed_findings": [],
+        }
+
+    previous_run = previous_analysis["run"]
+    previous_summary = previous_analysis["summary"]
+    previous_failures = previous_analysis["failures"]
+    previous_by_fingerprint: dict[str, dict] = {}
+    for record in previous_failures:
+        fingerprint = record.get("fingerprint") or _fingerprint_for_record(record)
+        if isinstance(fingerprint, str) and fingerprint and fingerprint not in previous_by_fingerprint:
+            previous_by_fingerprint[fingerprint] = record
+
+    current_by_fingerprint: dict[str, dict] = {}
+    for record in current_failure_records:
+        fingerprint = record.get("fingerprint") or _fingerprint_for_record(record)
+        if isinstance(fingerprint, str) and fingerprint and fingerprint not in current_by_fingerprint:
+            current_by_fingerprint[fingerprint] = record
+
+    current_fingerprints = set(current_by_fingerprint)
+    previous_fingerprints = set(previous_by_fingerprint)
+    new_fingerprints = current_fingerprints - previous_fingerprints
+    recurring_fingerprints = current_fingerprints & previous_fingerprints
+    fixed_fingerprints = previous_fingerprints - current_fingerprints
+    recurring_noise = len(
+        [
+            fingerprint
+            for fingerprint in recurring_fingerprints
+            if _is_low_signal(current_by_fingerprint[fingerprint])
+        ]
+    )
+
+    return {
+        "status": "available",
+        "comparison_run": {
+            "run_id": previous_run.id,
+            "created_at": previous_run.created_at.isoformat(),
+            "ref_requested": previous_run.ref_requested,
+            "ref_resolved": previous_run.ref_resolved,
+            "overall_assessment": previous_summary.get("overall_assessment"),
+        },
+        "counts": {
+            "new_findings": len(new_fingerprints),
+            "recurring_findings": len(recurring_fingerprints),
+            "fixed_findings": len(fixed_fingerprints),
+            "recurring_noise": recurring_noise,
+        },
+        "headline": _trend_headline(len(new_fingerprints), len(fixed_fingerprints), recurring_noise),
+        "new_findings": _summarize_trend_findings([current_by_fingerprint[f] for f in sorted(new_fingerprints)]),
+        "fixed_findings": _summarize_trend_findings([previous_by_fingerprint[f] for f in sorted(fixed_fingerprints)]),
+    }
+
+
+def _trend_headline(new_count: int, fixed_count: int, recurring_noise: int) -> str:
+    if new_count and fixed_count:
+        return f"{new_count} new findings appeared and {fixed_count} prior findings disappeared versus the previous analyzed run."
+    if new_count:
+        return f"{new_count} new findings appeared versus the previous analyzed run."
+    if fixed_count:
+        return f"{fixed_count} prior findings no longer appear versus the previous analyzed run."
+    if recurring_noise:
+        return f"No net new findings were detected, but {recurring_noise} recurring low-signal issues remain."
+    return "No changes were detected versus the previous analyzed run."
+
+
+def _summarize_trend_findings(records: list[dict]) -> list[dict]:
+    return [_trend_finding_from_record(record) for record in records[:3]]
+
+
+def _trend_finding_from_record(record: dict) -> dict:
+    return {
+        "fingerprint": record.get("fingerprint") or _fingerprint_for_record(record),
+        "suite": record.get("suite"),
+        "failure_category": record.get("failure_category", "product_failure"),
+        "headline": _headline_for_record(record),
+        "target_key": record.get("target_key"),
+        "symbol": record.get("symbol"),
+        "recipe_id": record.get("recipe_id"),
+        "recipe_name": record.get("recipe_name"),
+        "generated_test_file": record.get("generated_test_file"),
+        "confidence": record.get("confidence", "medium"),
+        "severity": record.get("severity", "medium"),
+    }
 
 
 def _build_highlights(overall_assessment: str, failure_records: list[dict]) -> list[dict]:
@@ -407,7 +555,13 @@ def _failure_evidence(record: dict) -> list[str]:
     return evidence[:3]
 
 
-def _apply_failure_heuristics(*, failure_records: list[dict], baseline_repo_status: str, infrastructure_status: str) -> None:
+def _apply_failure_heuristics(
+    *,
+    failure_records: list[dict],
+    baseline_repo_status: str,
+    infrastructure_status: str,
+    recurring_fingerprints: set[str],
+) -> None:
     baseline_passed = baseline_repo_status == "passed"
     group_counts = Counter(_group_key_for_record(record) for record in failure_records)
     generated_failures = [record for record in failure_records if record["suite"] == "generated"]
@@ -418,6 +572,7 @@ def _apply_failure_heuristics(*, failure_records: list[dict], baseline_repo_stat
         group_key = _group_key_for_record(record)
         group_size = group_counts[group_key]
         recipe_severity = RECIPE_SEVERITY_BY_ID.get(record.get("recipe_id"))
+        fingerprint = _fingerprint_for_record(record)
 
         heuristic_tags: list[str] = []
         score = 0.5
@@ -486,6 +641,13 @@ def _apply_failure_heuristics(*, failure_records: list[dict], baseline_repo_stat
                 heuristic_tags.append("single_test_only")
                 heuristic_tags.append("possible_flaky_timeout")
 
+            if fingerprint in recurring_fingerprints:
+                if failure_category in {"generated_test_issue", "flaky_suspect"}:
+                    score -= 0.12
+                    heuristic_tags.append("recurring_noise")
+                else:
+                    heuristic_tags.append("recurring_regression")
+
         score = max(0.0, min(1.0, round(score, 2)))
         if score >= 0.8:
             confidence = "high"
@@ -507,6 +669,7 @@ def _apply_failure_heuristics(*, failure_records: list[dict], baseline_repo_stat
         record["failure_category"] = failure_category
         record["heuristic_tags"] = sorted(set(heuristic_tags))
         record["group_key"] = group_key
+        record["fingerprint"] = fingerprint
 
 
 def _detail_text(record: dict) -> str:
@@ -529,6 +692,47 @@ def _error_kind(detail: str) -> str:
     if any(token in detail for token in ["environment", "dependency install failed", "pip install"]):
         return "setup"
     return "generic"
+
+
+def _normalize_fingerprint_part(value: object) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).strip().lower().split())
+
+
+def _fingerprint_for_record(record: dict) -> str:
+    suite = _normalize_fingerprint_part(record.get("suite") or "unknown")
+    failure_category = _normalize_fingerprint_part(record.get("failure_category") or "product_failure")
+    if suite == "existing":
+        return "|".join(
+            [
+                suite,
+                _normalize_fingerprint_part(record.get("file_path")),
+                _normalize_fingerprint_part(record.get("classname")),
+                _normalize_fingerprint_part(record.get("test_name")),
+            ]
+        )
+    if record.get("target_key"):
+        generated_file = Path(str(record.get("generated_test_file") or "")).name
+        return "|".join(
+            [
+                suite,
+                _normalize_fingerprint_part(record.get("target_key")),
+                _normalize_fingerprint_part(record.get("recipe_id")),
+                failure_category,
+                _normalize_fingerprint_part(generated_file),
+            ]
+        )
+    generated_file = Path(str(record.get("generated_test_file") or record.get("file_path") or "")).name
+    return "|".join(
+        [
+            suite,
+            _normalize_fingerprint_part(generated_file),
+            _normalize_fingerprint_part(record.get("classname")),
+            _normalize_fingerprint_part(record.get("test_name")),
+            failure_category,
+        ]
+    )
 
 
 def _group_key_for_record(record: dict) -> str:
@@ -599,6 +803,7 @@ def _build_llm_evidence_packet(
     manifest: GeneratedTestManifest,
     discover_payload: DiscoverTargetsArtifact,
     max_failures: int,
+    trend: dict,
 ) -> dict:
     discover_targets = {target.target_key: target for target in discover_payload.targets}
     top_failures = []
@@ -630,6 +835,7 @@ def _build_llm_evidence_packet(
         "generated_tests_status": summary_payload["generated_tests_status"],
         "infrastructure_status": summary_payload["infrastructure_status"],
         "counts": summary_payload["counts"],
+        "trend": trend,
         "generated_manifest_counts": {
             "generated": len([entry for entry in manifest.files if entry.status == "generated"]),
             "skipped": len([entry for entry in manifest.files if entry.status != "generated"]),
@@ -680,6 +886,7 @@ def _build_analysis_output_json(summary_payload: dict, artifacts: list[dict]) ->
         "llm_summary_available": summary_payload["llm_summary_available"],
         "counts": summary_payload["counts"],
         "highlights": summary_payload["highlights"],
+        "trend": summary_payload["trend"],
         "artifacts": {artifact["artifact_type"]: artifact["path"] for artifact in artifacts},
     }
 
@@ -694,6 +901,10 @@ def _build_run_summary(summary_payload: dict) -> dict:
         "generated_tests_status": summary_payload["generated_tests_status"],
         "infrastructure_status": summary_payload["infrastructure_status"],
         "high_signal_failures_count": summary_payload["counts"]["high_signal_failures"],
+        "trend_status": summary_payload["trend"]["status"],
+        "trend_headline": summary_payload["trend"]["headline"],
+        "new_findings_count": summary_payload["trend"]["counts"]["new_findings"],
+        "fixed_findings_count": summary_payload["trend"]["counts"]["fixed_findings"],
         "top_finding_severity": highlights[0].get("severity") if highlights else None,
         "top_finding_confidence": highlights[0].get("confidence") if highlights else None,
         "flaky_suspects_count": summary_payload["counts"].get("flaky_suspects", 0),

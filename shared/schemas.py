@@ -239,6 +239,44 @@ class AnalysisHighlightOut(BaseModel):
     evidence: list[str] = Field(default_factory=list)
 
 
+class AnalysisTrendFindingOut(BaseModel):
+    fingerprint: str
+    suite: Optional[str] = None
+    failure_category: str
+    headline: str
+    target_key: Optional[str] = None
+    symbol: Optional[str] = None
+    recipe_id: Optional[str] = None
+    recipe_name: Optional[str] = None
+    generated_test_file: Optional[str] = None
+    confidence: str = "medium"
+    severity: str = "medium"
+
+
+class AnalysisTrendComparisonRunOut(BaseModel):
+    run_id: str
+    created_at: str
+    ref_requested: Optional[str] = None
+    ref_resolved: Optional[str] = None
+    overall_assessment: Optional[str] = None
+
+
+class AnalysisTrendCountsOut(BaseModel):
+    new_findings: int = 0
+    recurring_findings: int = 0
+    fixed_findings: int = 0
+    recurring_noise: int = 0
+
+
+class AnalysisTrendOut(BaseModel):
+    status: str = "unavailable"
+    comparison_run: Optional[AnalysisTrendComparisonRunOut] = None
+    counts: AnalysisTrendCountsOut = Field(default_factory=AnalysisTrendCountsOut)
+    headline: Optional[str] = None
+    new_findings: list[AnalysisTrendFindingOut] = Field(default_factory=list)
+    fixed_findings: list[AnalysisTrendFindingOut] = Field(default_factory=list)
+
+
 class AnalysisSummaryOut(BaseModel):
     run_id: str
     stage_status: str
@@ -251,6 +289,7 @@ class AnalysisSummaryOut(BaseModel):
     llm_summary_available: bool = False
     counts: AnalysisCountOut
     highlights: list[AnalysisHighlightOut] = Field(default_factory=list)
+    trend: AnalysisTrendOut = Field(default_factory=AnalysisTrendOut)
     artifacts: list[AnalysisArtifactOut]
 
 

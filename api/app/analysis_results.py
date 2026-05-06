@@ -30,6 +30,7 @@ class AnalysisResultsService:
                 "llm_summary_available": bool(payload.get("llm_summary_available", False)),
                 "counts": payload.get("counts", {}),
                 "highlights": payload.get("highlights", []),
+                "trend": payload.get("trend", {"status": "unavailable", "counts": {}, "new_findings": [], "fixed_findings": []}),
                 "artifacts": artifacts,
             }
 
@@ -48,6 +49,7 @@ class AnalysisResultsService:
             "llm_summary_available": bool(output_json.get("llm_summary_available", False)),
             "counts": output_json.get("counts", {}),
             "highlights": output_json.get("highlights", []),
+            "trend": output_json.get("trend", {"status": "unavailable", "counts": {}, "new_findings": [], "fixed_findings": []}),
             "artifacts": artifacts,
         }
 

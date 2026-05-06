@@ -77,6 +77,20 @@ def list_runs(session: Session, workspace_id: str) -> list[Run]:
     return list(session.scalars(stmt).all())
 
 
+def list_prior_project_runs(session: Session, project_id: str, before_created_at: object, exclude_run_id: str) -> list[Run]:
+    stmt: Select[tuple[Run]] = (
+        select(Run)
+        .options(joinedload(Run.project))
+        .where(
+            Run.project_id == project_id,
+            Run.id != exclude_run_id,
+            Run.created_at < before_created_at,
+        )
+        .order_by(Run.created_at.desc())
+    )
+    return list(session.scalars(stmt).all())
+
+
 def create_job(session: Session, run_id: str, stage: str, rq_job_id: str | None = None) -> Job:
     job = Job(
         id=str(uuid4()),

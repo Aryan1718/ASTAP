@@ -58,6 +58,48 @@ function buildSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary
         evidence: ["AssertionError: expected sanitized path"],
       },
     ],
+    trend: {
+      status: "available",
+      comparison_run: {
+        run_id: "run-122",
+        created_at: "2026-05-05T00:00:00Z",
+        ref_requested: "main",
+        ref_resolved: "abc123",
+        overall_assessment: "all_passed",
+      },
+      counts: {
+        new_findings: 1,
+        recurring_findings: 0,
+        fixed_findings: 1,
+        recurring_noise: 0,
+      },
+      headline: "1 new finding appeared and 1 prior finding disappeared versus the previous analyzed run.",
+      new_findings: [
+        {
+          fingerprint: "generated|abc123|path_traversal|product_failure|test_parse_config_path_traversal_abc123.py",
+          suite: "generated",
+          failure_category: "product_failure",
+          headline: "Generated test for `parse_config` failed under `Path Traversal`.",
+          target_key: "abc123",
+          symbol: "parse_config",
+          recipe_id: "path_traversal",
+          recipe_name: "Path Traversal",
+          generated_test_file: "generated_tests/security/test_parse_config_path_traversal_abc123.py",
+          confidence: "high",
+          severity: "high",
+        },
+      ],
+      fixed_findings: [
+        {
+          fingerprint: "existing|tests/test_existing.py|tests.test_existing|test_existing_parse_config",
+          suite: "existing",
+          failure_category: "baseline_failure",
+          headline: "Existing test `test_existing_parse_config` failed before generated tests were considered.",
+          confidence: "high",
+          severity: "high",
+        },
+      ],
+    },
     artifacts: [],
     ...overrides,
   };
@@ -95,11 +137,14 @@ describe("RunAnalysisPanel", () => {
     renderPanel();
 
     expect(await screen.findByText("Generated tests found new failures")).toBeInTheDocument();
-    expect(screen.getAllByText("Generated test for `parse_config` failed under `Path Traversal`.")).toHaveLength(2);
+    expect(screen.getAllByText("Generated test for `parse_config` failed under `Path Traversal`.").length).toBeGreaterThanOrEqual(2);
     expect(await screen.findByText("# Run Analysis", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("filesystem access")).toBeInTheDocument();
     expect(screen.getByText("confidence score 0.96", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("Heuristics version")).toBeInTheDocument();
+    expect(screen.getByText("What changed")).toBeInTheDocument();
+    expect(screen.getByText("Recurring findings")).toBeInTheDocument();
+    expect(screen.getByText(/1 new finding appeared and 1 prior finding disappeared/i)).toBeInTheDocument();
   });
 
   it("navigates to the generated tests page with the selected file path", async () => {
@@ -180,5 +225,31 @@ describe("RunAnalysisPanel", () => {
     expect(screen.getByText("Unrunnable failures")).toBeInTheDocument();
     expect(screen.getByText("Flaky suspects")).toBeInTheDocument();
     expect(screen.getByText("generated suite unrunnable")).toBeInTheDocument();
+  });
+
+  it("renders an unavailable trend empty state when no comparison run exists", async () => {
+    mockApiClient.getAnalysisSummary.mockResolvedValue(
+      buildSummary({
+        trend: {
+          status: "unavailable",
+          comparison_run: null,
+          counts: {
+            new_findings: 0,
+            recurring_findings: 0,
+            fixed_findings: 0,
+            recurring_noise: 0,
+          },
+          headline: "No earlier analyzed run is available for comparison.",
+          new_findings: [],
+          fixed_findings: [],
+        },
+      })
+    );
+    mockApiClient.getAnalysisReport.mockResolvedValue(buildReport());
+
+    renderPanel();
+
+    expect(await screen.findByText("Generated tests found new failures")).toBeInTheDocument();
+    expect(screen.getByText("No earlier analyzed run is available for comparison.")).toBeInTheDocument();
   });
 });

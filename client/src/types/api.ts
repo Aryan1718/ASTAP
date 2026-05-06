@@ -128,6 +128,44 @@ export type AnalysisHighlight = {
   evidence: string[];
 };
 
+export type AnalysisTrendFinding = {
+  fingerprint: string;
+  suite?: string | null;
+  failure_category: string;
+  headline: string;
+  target_key?: string | null;
+  symbol?: string | null;
+  recipe_id?: string | null;
+  recipe_name?: string | null;
+  generated_test_file?: string | null;
+  confidence: string;
+  severity: string;
+};
+
+export type AnalysisTrendComparisonRun = {
+  run_id: string;
+  created_at: string;
+  ref_requested?: string | null;
+  ref_resolved?: string | null;
+  overall_assessment?: string | null;
+};
+
+export type AnalysisTrendCounts = {
+  new_findings: number;
+  recurring_findings: number;
+  fixed_findings: number;
+  recurring_noise: number;
+};
+
+export type AnalysisTrend = {
+  status: string;
+  comparison_run?: AnalysisTrendComparisonRun | null;
+  counts: AnalysisTrendCounts;
+  headline?: string | null;
+  new_findings: AnalysisTrendFinding[];
+  fixed_findings: AnalysisTrendFinding[];
+};
+
 export type AnalysisSummary = {
   run_id: string;
   stage_status: string;
@@ -140,6 +178,7 @@ export type AnalysisSummary = {
   llm_summary_available: boolean;
   counts: AnalysisCount;
   highlights: AnalysisHighlight[];
+  trend: AnalysisTrend;
   artifacts: AnalysisArtifact[];
 };
 
