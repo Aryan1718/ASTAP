@@ -28,8 +28,10 @@ export function RunsTable({ runs, loading, onOpenRun }: RunsTableProps) {
   if (!runs.length) {
     return (
       <div className="surface flex min-h-72 flex-col items-center justify-center px-6 py-10 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-accent-50 text-accent-700">02</div>
-        <h3 className="mt-5 text-xl font-semibold text-ink">No runs yet</h3>
+        <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-line bg-[#f7f3ee] font-display text-ink">02</div>
+        <h3 className="mt-5 font-display text-3xl text-ink" style={{ fontWeight: 460 }}>
+          No runs yet
+        </h3>
         <p className="mt-3 max-w-md text-sm leading-6 text-muted">
           Start a pipeline run from the Projects page and it will remain listed here even after you leave the detail screen.
         </p>
@@ -41,7 +43,7 @@ export function RunsTable({ runs, loading, onOpenRun }: RunsTableProps) {
     <div className="surface overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full border-collapse text-left">
-          <thead className="bg-canvas">
+          <thead className="bg-transparent">
             <tr className="text-xs uppercase tracking-[0.16em] text-muted">
               <th className="px-6 py-4 font-semibold">Project</th>
               <th className="px-6 py-4 font-semibold">Status</th>
@@ -53,7 +55,7 @@ export function RunsTable({ runs, loading, onOpenRun }: RunsTableProps) {
           </thead>
           <tbody>
             {runs.map((run) => (
-              <tr key={run.id} className="border-t border-line/70">
+              <tr key={run.id} className="border-t border-line/70 bg-transparent transition hover:bg-[#fbf8f5]">
                 <td className="px-6 py-5">
                   <div>
                     <p className="m-0 font-semibold text-ink">{run.project_name}</p>

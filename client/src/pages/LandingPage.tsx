@@ -34,14 +34,14 @@ const steps = [
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-line/80 bg-white/90 backdrop-blur">
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="absolute inset-x-0 top-0 z-20">
         <div className="page-shell flex h-20 items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-sm font-bold text-white shadow-soft">AT</div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/20 font-display text-sm uppercase tracking-[0.12em] text-white">AT</div>
             <div>
-              <p className="m-0 text-sm font-semibold text-ink">ASTAP</p>
-              <p className="m-0 text-xs text-muted">Automated Testing and Analysis Platform</p>
+              <p className="m-0 font-display text-sm uppercase tracking-[0.12em] text-white">ASTAP</p>
+              <p className="m-0 text-xs text-white/80">Automated Testing and Analysis Platform</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -56,16 +56,16 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden border-b border-line/70">
-          <div className="absolute inset-0 bg-hero-grid bg-[size:42px_42px] opacity-40" />
+        <section className="relative overflow-hidden bg-hero-gradient pt-24 text-white">
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-white" />
           <div className="page-shell relative grid gap-12 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:py-28">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-accent">Test runs and analysis</p>
-              <h1 className="mt-6 max-w-4xl font-display text-5xl leading-tight text-ink md:text-6xl">
-                ASTAP helps you run tests and understand what is failing.
+              <p className="text-xs uppercase tracking-[0.32em] text-white/80">Test runs and analysis</p>
+              <h1 className="mt-6 max-w-4xl font-display text-5xl md:text-[64px]" style={{ fontWeight: 540, lineHeight: 0.96 }}>
+                Immutable snapshots. Clear execution. Test generation you can actually inspect.
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-muted text-balance">
-                Connect your GitHub repository, choose a branch, start a run, and get analysis that helps you find flaky tests, broken APIs, and failure patterns.
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80 text-balance">
+                Connect a GitHub repository, freeze the exact commit, move each stage through a visible pipeline, and review the resulting artifacts from a single calm surface.
               </p>
               <div className="mt-10 flex flex-wrap gap-4">
                 <Link to="/signup">
@@ -78,19 +78,20 @@ export function LandingPage() {
                 </Link>
               </div>
             </div>
-            <Card className="relative overflow-hidden p-8">
-              <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-accent/10 blur-3xl" />
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">How to use ASTAP</p>
-              <h2 className="mt-3 text-2xl font-semibold text-ink">A simple workflow for your team.</h2>
+            <Card className="hero-panel relative overflow-hidden p-8 text-white">
+              <p className="text-xs uppercase tracking-[0.24em] text-white/80">Pipeline sequence</p>
+              <h2 className="mt-3 text-[28px] leading-[1.14]" style={{ fontWeight: 540, letterSpacing: "-0.63px" }}>
+                A direct path from repository intake to execution evidence.
+              </h2>
               <div className="mt-8 grid gap-4">
                 {["Create account", "Add repo", "Choose branch", "Start run", "Review analysis"].map((stage, index) => (
                   <div
                     key={stage}
-                    className="rounded-2xl border border-line bg-white px-4 py-4"
+                    className="rounded-2xl border border-white/20 bg-white/5 px-4 py-4"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="m-0 text-sm font-semibold tracking-[0.02em] text-ink">{stage}</p>
-                      <span className="rounded-full bg-accent-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-700">
+                      <p className="m-0 text-sm tracking-[0.02em] text-white">{stage}</p>
+                      <span className="rounded-lg border border-white/20 px-2 py-1 font-display text-[11px] uppercase tracking-[0.14em] text-white">
                         {index + 1}
                       </span>
                     </div>
@@ -104,31 +105,37 @@ export function LandingPage() {
         <section className="page-shell py-16 lg:py-20">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">Why teams use ASTAP</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">Focus on what failed and why.</h2>
+              <p className="text-xs uppercase tracking-[0.24em] text-muted">Why teams use ASTAP</p>
+              <h2 className="mt-3 text-[48px] leading-[0.96] text-ink" style={{ fontWeight: 460, letterSpacing: "-1.32px" }}>
+                Focus on what failed and why.
+              </h2>
             </div>
           </div>
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
             {features.map((feature) => (
               <Card key={feature.title} className="p-6">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-50 text-sm font-semibold text-accent-700">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-[#f7f3ee] font-display text-sm uppercase text-ink">
                   0{features.indexOf(feature) + 1}
                 </div>
-                <h3 className="mt-5 text-lg font-semibold text-ink">{feature.title}</h3>
+                <h3 className="mt-5 text-[28px] leading-[1.14] text-ink" style={{ fontWeight: 540, letterSpacing: "-0.63px" }}>
+                  {feature.title}
+                </h3>
                 <p className="mt-3 text-sm leading-6 text-muted">{feature.description}</p>
               </Card>
             ))}
           </div>
         </section>
 
-        <section className="border-y border-line/70 bg-canvas py-16 lg:py-20">
+        <section className="border-y border-line bg-canvas py-16 lg:py-20">
           <div className="page-shell">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">How it works</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-muted">How it works</p>
             <div className="mt-8 grid gap-6 lg:grid-cols-3">
               {steps.map((step, index) => (
                 <Card key={step.title} className="p-8">
-                  <p className="m-0 text-sm font-semibold uppercase tracking-[0.18em] text-accent">Step {index + 1}</p>
-                  <h3 className="mt-3 text-2xl font-semibold text-ink">{step.title}</h3>
+                  <p className="m-0 font-display text-sm uppercase tracking-[0.18em] text-muted">Step {index + 1}</p>
+                  <h3 className="mt-3 text-[26px] leading-[1.3] text-ink" style={{ fontWeight: 460 }}>
+                    {step.title}
+                  </h3>
                   <p className="mt-4 text-sm leading-7 text-muted">{step.description}</p>
                 </Card>
               ))}
@@ -137,7 +144,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-line/80 bg-white">
+      <footer className="border-t border-line bg-canvas">
         <div className="page-shell flex flex-col gap-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
           <p className="m-0">ASTAP</p>
           <div className="flex items-center gap-6">

@@ -6,13 +6,27 @@ type StatusBadgeProps = {
 };
 
 const styles: Record<string, string> = {
-  queued: "bg-slate-100 text-slate-700 border-slate-200",
-  pending: "bg-slate-100 text-slate-700 border-slate-200",
-  running: "bg-accent-50 text-accent-700 border-accent-200",
-  retrying: "bg-accent-50 text-accent-700 border-accent-200",
-  succeeded: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  failed: "bg-red-50 text-red-700 border-red-200",
-  canceled: "bg-slate-100 text-slate-700 border-slate-200",
+  queued: "bg-white text-muted border-line",
+  pending: "bg-white text-muted border-line",
+  running: "bg-[#f4eefc] text-ink border-[#cbb7fb]",
+  retrying: "bg-[#f4eefc] text-ink border-[#cbb7fb]",
+  succeeded: "bg-[#f4eefc] text-ink border-[#cbb7fb]",
+  passed: "bg-[#f4eefc] text-ink border-[#cbb7fb]",
+  completed_successfully: "bg-[#f4eefc] text-ink border-[#cbb7fb]",
+  failed: "bg-[#f7efee] text-ink border-line",
+  completed_with_failures: "bg-[#f7efee] text-ink border-line",
+  error: "bg-[#f7efee] text-ink border-line",
+  skipped: "bg-white text-muted border-line",
+  canceled: "bg-white text-muted border-line",
+  critical: "bg-[#f7efee] text-ink border-line",
+  high: "bg-[#f7f3ee] text-ink border-line",
+  medium: "bg-[#fbf8f5] text-ink border-line",
+  low: "bg-white text-muted border-line",
+  product_failure: "bg-[#f7efee] text-ink border-line",
+  baseline_failure: "bg-[#f7f3ee] text-ink border-line",
+  generated_test_issue: "bg-white text-muted border-line",
+  environment_issue: "bg-[#f7efee] text-ink border-line",
+  flaky_suspect: "bg-[#fbf8f5] text-ink border-line",
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
@@ -20,10 +34,11 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.16em]",
+        "inline-flex items-center rounded-lg border px-3 py-1.5 font-display text-[11px] uppercase tracking-[0.12em]",
         styles[normalized] ?? "border-line bg-white text-muted",
         className
       )}
+      style={{ fontWeight: 600 }}
     >
       {normalized}
     </span>

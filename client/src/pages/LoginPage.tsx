@@ -67,7 +67,7 @@ export function LoginPage() {
             label="Remember session"
             hint="Choose whether this device should persist your Supabase session."
           />
-          <Link to="/signup" className="text-sm font-semibold text-accent-700">
+          <Link to="/signup" className="text-sm text-link underline underline-offset-4">
             Create account
           </Link>
         </div>

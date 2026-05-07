@@ -14,6 +14,7 @@ type GeneratedTestsPanelProps = {
   token: string;
   run: RunDetail;
   minimal?: boolean;
+  initialSelectedPath?: string | null;
 };
 
 const DEFAULT_EXPLORER_WIDTH = 288;
@@ -37,16 +38,16 @@ function generatedEntries(manifest: GeneratedTestManifest | null) {
 
 function ManifestLoadingState({ minimal }: { minimal: boolean }) {
   return (
-    <Card className="h-[calc(100vh-8.5rem)] overflow-hidden rounded-2xl">
+    <Card className="h-[calc(100vh-8.5rem)] overflow-hidden">
       {minimal ? null : (
         <div className="border-b border-line/80 px-6 py-5 md:px-8">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Generated Tests</p>
-          <h2 className="mt-2 text-2xl font-semibold text-ink">Read-only code explorer</h2>
+          <p className="m-0 font-display text-xs uppercase tracking-[0.12em] text-muted">Generated Tests</p>
+          <h2 className="mt-2 text-2xl font-normal text-ink">Read-only code explorer</h2>
         </div>
       )}
       <div className="grid h-full gap-0 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <div className="border-r border-line p-4">
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Explorer</p>
+          <p className="m-0 font-display text-xs uppercase tracking-[0.12em] text-muted">Explorer</p>
           <Skeleton className="h-5 w-24" />
           <Skeleton className="mt-4 h-10 w-full" />
           <Skeleton className="mt-3 h-10 w-full" />
@@ -62,7 +63,7 @@ function ManifestLoadingState({ minimal }: { minimal: boolean }) {
   );
 }
 
-export function GeneratedTestsPanel({ token, run, minimal = false }: GeneratedTestsPanelProps) {
+export function GeneratedTestsPanel({ token, run, minimal = false, initialSelectedPath = null }: GeneratedTestsPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [manifest, setManifest] = useState<GeneratedTestManifest | null>(null);
   const [loadingManifest, setLoadingManifest] = useState(true);
@@ -116,10 +117,17 @@ export function GeneratedTestsPanel({ token, run, minimal = false }: GeneratedTe
       return;
     }
 
-    if (!selectedPath || !files.some((entry) => entry.generated_test_file === selectedPath)) {
-      setSelectedPath(files[0].generated_test_file);
+    if (selectedPath && files.some((entry) => entry.generated_test_file === selectedPath)) {
+      return;
     }
-  }, [files, selectedPath]);
+
+    if (initialSelectedPath && files.some((entry) => entry.generated_test_file === initialSelectedPath)) {
+      setSelectedPath(initialSelectedPath);
+      return;
+    }
+
+    setSelectedPath(files[0].generated_test_file);
+  }, [files, initialSelectedPath, selectedPath]);
 
   useEffect(() => {
     if (!selectedEntry?.generated_test_file || fileContents[selectedEntry.generated_test_file]) {
@@ -137,7 +145,8 @@ export function GeneratedTestsPanel({ token, run, minimal = false }: GeneratedTe
         if (!active) {
           return;
         }
-        setFileContents((current) => ({ ...current, [payload.path]: payload }));
+        const resolvedPath = payload.path || path;
+        setFileContents((current) => ({ ...current, [resolvedPath]: { ...payload, path: resolvedPath } }));
       } catch (error) {
         if (!active) {
           return;
@@ -243,7 +252,7 @@ export function GeneratedTestsPanel({ token, run, minimal = false }: GeneratedTe
   } as CSSProperties;
 
   return (
-    <Card className="h-[calc(100vh-8.5rem)] overflow-hidden rounded-2xl">
+    <Card className="h-[calc(100vh-8.5rem)] overflow-hidden">
       {minimal ? null : <GeneratedTestsHeader manifest={manifest} runStatus={run.status} generatedCount={files.length} />}
       <div
         ref={panelRef}
@@ -256,9 +265,9 @@ export function GeneratedTestsPanel({ token, run, minimal = false }: GeneratedTe
           aria-label="Resize explorer"
           aria-orientation="vertical"
           onMouseDown={handleResizeStart}
-          className="group hidden cursor-col-resize border-x border-line bg-canvas transition hover:bg-accent-50 lg:flex lg:min-h-0 lg:items-center lg:justify-center"
+          className="group hidden cursor-col-resize border-x border-line bg-transparent transition hover:bg-[#fbf8f5] lg:flex lg:min-h-0 lg:items-center lg:justify-center"
         >
-          <span className="h-12 w-1 rounded-full bg-line transition group-hover:bg-accent" />
+          <span className="h-12 w-1 bg-line transition group-hover:bg-[#cbb7fb]" />
         </button>
         <GeneratedTestsCodeViewer
           path={selectedEntry.generated_test_file}

@@ -4,12 +4,10 @@
 
 @layer base {
   :root {
-    color: #101828;
-    background:
-      radial-gradient(circle at top left, rgba(224, 154, 25, 0.14), transparent 24rem),
-      linear-gradient(135deg, rgba(224, 154, 25, 0.08), transparent 40%),
-      #ffffff;
-    font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+    color: #292827;
+    background: #ffffff;
+    font-family: "Super Sans VF", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-weight: 460;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -24,7 +22,7 @@
   }
 
   body {
-    @apply m-0 min-h-screen bg-white text-ink;
+    @apply m-0 min-h-screen bg-canvas text-ink;
   }
 
   a {
@@ -44,19 +42,41 @@
 
 @layer components {
   .surface {
-    @apply rounded-3xl border border-line bg-panel shadow-panel;
+    @apply rounded-2xl border border-line bg-panel shadow-soft;
   }
 
   .surface-muted {
-    @apply rounded-3xl border border-line/80 bg-white/95 shadow-soft;
+    @apply rounded-2xl border border-line bg-white shadow-none;
   }
 
   .page-shell {
-    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8;
   }
 
   .focus-ring {
-    @apply focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent;
+    @apply focus:outline-none focus:ring-4 focus:ring-accent/35 focus:border-ink;
+  }
+
+  .section-eyebrow {
+    @apply m-0 text-xs font-semibold uppercase tracking-[0.28em] text-muted;
+  }
+
+  .section-title {
+    @apply m-0 text-4xl tracking-tight text-ink md:text-[48px] md:leading-[0.96];
+    font-weight: 460;
+    letter-spacing: -1.32px;
+  }
+
+  .section-copy {
+    @apply text-base leading-6 text-muted;
+    line-height: 1.5;
+    font-weight: 460;
+  }
+
+  .hero-panel {
+    @apply rounded-2xl border p-6 shadow-none;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.03);
   }
 }
 

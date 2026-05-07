@@ -13,13 +13,14 @@ export function Button({ children, className, variant = "primary", ...props }: B
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold transition duration-200 focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60",
-        variant === "primary" && "bg-accent text-white shadow-soft hover:-translate-y-0.5 hover:shadow-panel focus:ring-accent/20",
-        variant === "secondary" && "border border-accent/25 bg-accent-50 text-accent-700 hover:bg-accent-100 focus:ring-accent/15",
-        variant === "ghost" && "border border-line bg-white text-ink hover:border-accent/40 hover:text-accent-700 focus:ring-accent/10",
-        variant === "danger" && "bg-red-600 text-white hover:bg-red-700 focus:ring-red-200",
+        "inline-flex min-h-11 items-center justify-center rounded-lg px-6 py-3 font-display text-base leading-none transition duration-200 focus-ring disabled:cursor-not-allowed disabled:opacity-60",
+        variant === "primary" && "border border-transparent bg-cream text-ink hover:opacity-90",
+        variant === "secondary" && "border border-ink bg-ink text-white hover:opacity-92",
+        variant === "ghost" && "border border-line bg-transparent text-ink hover:border-ink hover:bg-[#f7f3ee]",
+        variant === "danger" && "border border-line bg-transparent text-ink hover:border-ink hover:bg-[#f4efea]",
         className
       )}
+      style={{ fontWeight: variant === "primary" || variant === "secondary" ? 700 : 600 }}
       {...props}
     >
       {children}

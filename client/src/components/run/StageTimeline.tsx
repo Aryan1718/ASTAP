@@ -17,9 +17,11 @@ export function StageTimeline({ stages, runId }: { stages: Stage[]; runId: strin
   return (
     <div className="surface p-6 md:p-8">
       <div className="border-b border-line/80 pb-6">
-        <p className="m-0 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Stages</p>
-        <h2 className="mt-2 text-2xl font-semibold text-ink">Pipeline timeline</h2>
-        <p className="mt-2 text-sm leading-6 text-muted">Ingest, discover, and generated tests reflect live API state. Later stages stay visible as placeholders.</p>
+        <p className="section-eyebrow">Stages</p>
+        <h2 className="mt-2 text-[2rem] leading-tight text-ink" style={{ fontWeight: 460 }}>
+          Pipeline timeline
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">All pipeline stages reflect live API state, including the final analyze step that summarizes execution outcomes.</p>
       </div>
       <div className="mt-6 grid gap-4">
         {orderedStages.map((name, index) => {
@@ -32,8 +34,8 @@ export function StageTimeline({ stages, runId }: { stages: Stage[]; runId: strin
             <div
               key={name}
               className={cn(
-                "rounded-2xl border p-4 transition",
-                isLive ? "border-line bg-white" : "border-dashed border-line bg-slate-50/70"
+                "rounded-2xl border p-5 transition",
+                isLive ? "border-line bg-white" : "border-dashed border-line bg-transparent"
               )}
               title={isLive ? undefined : "Coming soon"}
             >
@@ -41,17 +43,17 @@ export function StageTimeline({ stages, runId }: { stages: Stage[]; runId: strin
                 <div className="flex items-start gap-4">
                   <div
                     className={cn(
-                      "mt-1 flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold",
-                      isComplete && "bg-emerald-50 text-emerald-700",
-                      isActive && "bg-accent-50 text-accent-700",
-                      !isLive && "bg-slate-100 text-slate-500",
-                      isLive && !isComplete && !isActive && "bg-slate-100 text-slate-700"
+                      "mt-1 flex h-11 w-11 items-center justify-center rounded-lg border text-sm font-display uppercase",
+                      isComplete && "border-line bg-[#f7f3ee] text-ink",
+                      isActive && "border-[#cbb7fb] bg-[#f4eefc] text-ink",
+                      !isLive && "border-line text-muted",
+                      isLive && !isComplete && !isActive && "border-line text-ink"
                     )}
                   >
                     0{index + 1}
                   </div>
                   <div>
-                    <p className="m-0 text-sm font-semibold uppercase tracking-[0.18em] text-ink">{name.replace(/_/g, " ")}</p>
+                    <p className="m-0 text-sm font-semibold uppercase tracking-[0.2em] text-ink">{name.replace(/_/g, " ")}</p>
                     <p className="mt-1 text-sm leading-6 text-muted">
                       {isLive ? "Stage status is sourced from the API." : "Reserved placeholder for future pipeline phases."}
                     </p>
@@ -71,12 +73,12 @@ export function StageTimeline({ stages, runId }: { stages: Stage[]; runId: strin
                     <StatusBadge status={stage?.status ?? "pending"} />
                   </div>
                 ) : (
-                  <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <span className="inline-flex rounded-lg border border-line px-3 py-1.5 font-display text-[11px] uppercase tracking-[0.12em] text-muted">
                     Coming soon
                   </span>
                 )}
               </div>
-              {stage?.error_message ? <p className="mt-3 text-sm text-red-600">{stage.error_message}</p> : null}
+              {stage?.error_message ? <p className="mt-3 text-sm text-muted">{stage.error_message}</p> : null}
             </div>
           );
         })}

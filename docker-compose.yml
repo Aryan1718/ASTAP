@@ -40,8 +40,26 @@ services:
     depends_on:
       queue:
         condition: service_healthy
+      executor:
+        condition: service_started
+    volumes:
+      - executor_workspaces:/executor-workspaces
+
+  executor:
+    build:
+      context: .
+      dockerfile: executor/Dockerfile
+    env_file:
+      - .env
+    environment:
+      EXECUTE_TESTS_SHARED_WORKSPACE_ROOT: /executor-workspaces
+      EXECUTOR_ALLOWED_IMAGE: ${EXECUTE_TESTS_IMAGE:-python:3.12-slim}
+    depends_on:
+      queue:
+        condition: service_healthy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - executor_workspaces:/executor-workspaces
 
   client:
     build:
@@ -63,3 +81,4 @@ services:
 
 volumes:
   client_node_modules:
+  executor_workspaces:
