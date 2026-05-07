@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -68,8 +69,11 @@ class CommandExecutionError(RuntimeError):
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+def healthz() -> dict[str, object]:
+    diagnostics = docker_diagnostics()
+    if diagnostics["status"] != "ok":
+        raise HTTPException(status_code=503, detail=diagnostics)
+    return diagnostics
 
 
 @app.post("/executions", response_model=ExecutionResponse)
@@ -77,6 +81,7 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
     workspace_path = validate_workspace_path(payload.workspace_path)
     if payload.image != settings.allowed_image:
         raise HTTPException(status_code=400, detail="Execution image is not allowed")
+    ensure_executor_runtime_ready()
 
     container_name = f"astap-exec-{next(tempfile._get_candidate_names())}"
     steps = {
@@ -147,6 +152,49 @@ def validate_workspace_path(workspace_path: str) -> Path:
     if candidate != shared_root and shared_root not in candidate.parents:
         raise HTTPException(status_code=400, detail="workspace_path must be inside the shared workspace root")
     return candidate
+
+
+def docker_diagnostics() -> dict[str, object]:
+    docker_path = shutil.which("docker")
+    socket_path = Path("/var/run/docker.sock")
+    issues: list[str] = []
+    if docker_path is None:
+        issues.append("docker_cli_missing")
+    if not socket_path.exists():
+        issues.append("docker_socket_missing")
+    elif not socket_path.is_socket():
+        issues.append("docker_socket_invalid")
+
+    status = "ok" if not issues else "degraded"
+    return {
+        "status": status,
+        "docker_cli_path": docker_path,
+        "docker_socket_path": str(socket_path),
+        "issues": issues,
+    }
+
+
+def ensure_executor_runtime_ready() -> None:
+    diagnostics = docker_diagnostics()
+    if diagnostics["status"] == "ok":
+        return
+
+    issue_messages = {
+        "docker_cli_missing": "Docker CLI is not installed in the executor container.",
+        "docker_socket_missing": "Docker socket is not mounted into the executor container.",
+        "docker_socket_invalid": "Docker socket mount is not a Unix socket.",
+    }
+    message = " ".join(issue_messages[issue] for issue in diagnostics["issues"])
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "message": (
+                f"{message} Rebuild the executor image and verify the "
+                "`/var/run/docker.sock` mount is present."
+            ),
+            **diagnostics,
+        },
+    )
 
 
 def create_container(container_name: str, workspace_path: Path, payload: ExecutionRequest) -> None:
@@ -239,6 +287,8 @@ def run_command(container_name: str, command: list[str], timeout_seconds: int) -
 
 
 def remove_container(container_name: str) -> None:
+    if shutil.which("docker") is None:
+        return
     subprocess.run(
         ["docker", "rm", "-f", container_name],
         check=False,
