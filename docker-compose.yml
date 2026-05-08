@@ -42,8 +42,11 @@ services:
         condition: service_healthy
       executor:
         condition: service_started
+    environment:
+      EXECUTE_TESTS_SHARED_WORKSPACE_ROOT: /executor-workspaces
+      EXECUTE_TESTS_HOST_WORKSPACE_ROOT: ${PWD}/.executor-workspaces
     volumes:
-      - executor_workspaces:/executor-workspaces
+      - ./.executor-workspaces:/executor-workspaces
 
   executor:
     build:
@@ -53,13 +56,14 @@ services:
       - .env
     environment:
       EXECUTE_TESTS_SHARED_WORKSPACE_ROOT: /executor-workspaces
-      EXECUTOR_ALLOWED_IMAGE: ${EXECUTE_TESTS_IMAGE:-python:3.12-slim}
+      EXECUTE_TESTS_HOST_WORKSPACE_ROOT: ${PWD}/.executor-workspaces
+      EXECUTOR_ALLOWED_IMAGE: ${EXECUTE_TESTS_IMAGE:-astsp-executor:latest}
     depends_on:
       queue:
         condition: service_healthy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - executor_workspaces:/executor-workspaces
+      - ./.executor-workspaces:/executor-workspaces
 
   client:
     build:
@@ -81,4 +85,3 @@ services:
 
 volumes:
   client_node_modules:
-  executor_workspaces:

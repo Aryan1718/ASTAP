@@ -134,8 +134,8 @@ export function RunDetailPage() {
       />
 
       <Card className="p-6 md:p-8">
-        <div className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="grid gap-5">
+        <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div className="grid min-w-0 gap-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="border border-line px-4 py-4">
                 <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Repository</p>
@@ -169,7 +169,7 @@ export function RunDetailPage() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-line bg-[#fbf8f5] p-6">
+          <div className="min-w-0 rounded-2xl border border-line bg-[#fbf8f5] p-6">
             <p className="section-eyebrow">Run summary</p>
             <div className="mt-5 grid gap-4 text-sm">
               <div>
@@ -189,7 +189,7 @@ export function RunDetailPage() {
         </div>
       </Card>
 
-      <div className="grid gap-8 2xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid min-w-0 gap-8 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <StageTimeline stages={run.stages} runId={run.id} />
         <ArtifactsPanel snapshot={run.snapshot} onCopy={copyValue} />
       </div>

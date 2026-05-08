@@ -120,9 +120,10 @@ def discover_job(run_id: str, job_id: str) -> None:
         )
 
         targets_artifact = {
-            "artifact_type": "targets_json",
+            "artifact_type": "discover_targets",
             "bucket": settings.supabase_storage_bucket,
             "key": object_key,
+            "path": "discover/targets.json",
         }
         mark_job_succeeded_with_artifacts(
             session,

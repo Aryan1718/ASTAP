@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 
 import { apiClient } from "../../lib/apiClient";
-import type { GeneratedTestFileContent, GeneratedTestManifest, GeneratedTestManifestEntry, RunDetail, Stage } from "../../types/api";
+import type {
+  GeneratedTestCases,
+  GeneratedTestFileContent,
+  GeneratedTestManifest,
+  GeneratedTestManifestEntry,
+  RunDetail,
+  Stage,
+} from "../../types/api";
 import { Card } from "../ui/Card";
 import { Skeleton } from "../ui/Skeleton";
 import { GeneratedTestsCodeViewer } from "./GeneratedTestsCodeViewer";
@@ -69,14 +76,21 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
   const [loadingManifest, setLoadingManifest] = useState(true);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [fileContents, setFileContents] = useState<Record<string, GeneratedTestFileContent>>({});
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [testCasesPayload, setTestCasesPayload] = useState<GeneratedTestCases | null>(null);
   const [explorerWidth, setExplorerWidth] = useState(DEFAULT_EXPLORER_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
 
   const generateTestsStage = useMemo(() => findStage(run.stages, "generate_tests"), [run.stages]);
   const files = useMemo(() => generatedEntries(manifest), [manifest]);
+  const testCases = useMemo(() => testCasesPayload?.cases ?? [], [testCasesPayload]);
+  const selectedCase = useMemo(
+    () => testCases.find((entry) => entry.case_id === selectedCaseId) ?? null,
+    [selectedCaseId, testCases]
+  );
   const selectedEntry = useMemo(() => files.find((entry) => entry.generated_test_file === selectedPath) ?? files[0] ?? null, [files, selectedPath]);
 
   useEffect(() => {
@@ -112,8 +126,34 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
   }, [generateTestsStage?.status, run.id, token]);
 
   useEffect(() => {
+    let active = true;
+
+    async function loadCases() {
+      try {
+        const payload = await apiClient.getGeneratedTestCases(token, run.id);
+        if (!active) {
+          return;
+        }
+        setTestCasesPayload(payload);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setTestCasesPayload(null);
+      }
+    }
+
+    void loadCases();
+
+    return () => {
+      active = false;
+    };
+  }, [generateTestsStage?.status, run.id, token]);
+
+  useEffect(() => {
     if (!files.length) {
       setSelectedPath(null);
+      setSelectedCaseId(null);
       return;
     }
 
@@ -128,6 +168,19 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
 
     setSelectedPath(files[0].generated_test_file);
   }, [files, initialSelectedPath, selectedPath]);
+
+  useEffect(() => {
+    if (!selectedCaseId) {
+      return;
+    }
+    if (!selectedCase) {
+      setSelectedCaseId(null);
+      return;
+    }
+    if (selectedCase.generated_test_file && selectedCase.generated_test_file !== selectedPath) {
+      setSelectedPath(selectedCase.generated_test_file);
+    }
+  }, [selectedCase, selectedCaseId, selectedPath]);
 
   useEffect(() => {
     if (!selectedEntry?.generated_test_file || fileContents[selectedEntry.generated_test_file]) {
@@ -201,6 +254,16 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
     setIsResizing(true);
   }
 
+  function handleSelectFile(path: string) {
+    setSelectedPath(path);
+    setSelectedCaseId(null);
+  }
+
+  function handleSelectCase(caseId: string, path: string) {
+    setSelectedCaseId(caseId);
+    setSelectedPath(path);
+  }
+
   if (loadingManifest) {
     return <ManifestLoadingState minimal={minimal} />;
   }
@@ -253,13 +316,27 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
 
   return (
     <Card className="h-[calc(100vh-8.5rem)] overflow-hidden">
-      {minimal ? null : <GeneratedTestsHeader manifest={manifest} runStatus={run.status} generatedCount={files.length} />}
+      {minimal ? null : (
+        <GeneratedTestsHeader
+          manifest={manifest}
+          runStatus={run.status}
+          generatedCount={files.length}
+          testCaseCount={testCases.length}
+        />
+      )}
       <div
         ref={panelRef}
         style={panelStyle}
         className="grid h-full min-h-0 grid-cols-1 gap-0 lg:[grid-template-columns:var(--explorer-width)_12px_minmax(0,1fr)]"
       >
-        <GeneratedTestsFileTree files={files} selectedPath={selectedEntry.generated_test_file} onSelect={setSelectedPath} />
+        <GeneratedTestsFileTree
+          files={files}
+          testCases={testCases}
+          selectedPath={selectedEntry.generated_test_file}
+          selectedCaseId={selectedCaseId}
+          onSelect={handleSelectFile}
+          onSelectCase={handleSelectCase}
+        />
         <button
           type="button"
           aria-label="Resize explorer"
@@ -274,6 +351,7 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
           content={currentContent?.content ?? null}
           isLoading={loadingPath === selectedEntry.generated_test_file && !currentContent}
           errorMessage={loadingPath === null && !currentContent ? contentError : null}
+          highlightedTestName={selectedCase?.generated_test_file === selectedEntry.generated_test_file ? selectedCase.name : null}
         />
       </div>
     </Card>

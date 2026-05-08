@@ -13,7 +13,8 @@ class ExecutorSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     shared_workspace_root: str = Field(default="/executor-workspaces", alias="EXECUTE_TESTS_SHARED_WORKSPACE_ROOT")
-    allowed_image: str = Field(default="python:3.12-slim", alias="EXECUTOR_ALLOWED_IMAGE")
+    host_workspace_root: str = Field(default="/executor-workspaces", alias="EXECUTE_TESTS_HOST_WORKSPACE_ROOT")
+    allowed_image: str = Field(default="astsp-executor:latest", alias="EXECUTOR_ALLOWED_IMAGE")
 
 
 settings = ExecutorSettings()
@@ -56,6 +57,7 @@ class StepResult(BaseModel):
 
 class ExecutionResponse(BaseModel):
     python_version: str
+    platform_system: str
     isolation: dict
     steps: dict
     error: dict | None = None
@@ -105,6 +107,12 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
             payload.install_timeout_seconds,
         )
         python_version = (python_version_result.stdout or python_version_result.stderr).strip() or "unknown"
+        platform_system_result = run_command(
+            container_name,
+            ["python", "-c", "import platform; print(platform.system())"],
+            payload.install_timeout_seconds,
+        )
+        platform_system = (platform_system_result.stdout or platform_system_result.stderr).strip() or "unknown"
 
         for command in payload.commands.install:
             rewritten = rewrite_python_command(command)
@@ -113,6 +121,7 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
             if result.exit_code != 0:
                 return build_response(
                     python_version=python_version,
+                    platform_system=platform_system,
                     limits=payload.limits,
                     steps=steps,
                     error={"type": "environment_setup_failed", "message": f"Dependency install failed: {' '.join(rewritten)}"},
@@ -132,10 +141,17 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
                 payload.suite_timeout_seconds,
             )
 
-        return build_response(python_version=python_version, limits=payload.limits, steps=steps, error=None)
+        return build_response(
+            python_version=python_version,
+            platform_system=platform_system,
+            limits=payload.limits,
+            steps=steps,
+            error=None,
+        )
     except CommandExecutionError as exc:
         return build_response(
             python_version="unknown",
+            platform_system="unknown",
             limits=payload.limits,
             steps=steps,
             error={"type": f"{exc.step}_failed", "message": str(exc)},
@@ -198,6 +214,7 @@ def ensure_executor_runtime_ready() -> None:
 
 
 def create_container(container_name: str, workspace_path: Path, payload: ExecutionRequest) -> None:
+    host_workspace_path = resolve_host_workspace_path(workspace_path)
     subprocess.run(
         [
             "docker",
@@ -232,11 +249,11 @@ def create_container(container_name: str, workspace_path: Path, payload: Executi
             "-e",
             "PIP_DISABLE_PIP_VERSION_CHECK=1",
             "-v",
-            f"{workspace_path / 'repo'}:/workspace/repo:ro",
+            f"{host_workspace_path / 'repo'}:/workspace/repo:rw",
             "-v",
-            f"{workspace_path / 'out'}:/workspace/out:rw",
+            f"{host_workspace_path / 'out'}:/workspace/out:rw",
             "-v",
-            f"{workspace_path / 'tmp'}:/workspace/tmp:rw",
+            f"{host_workspace_path / 'tmp'}:/workspace/tmp:rw",
             "-w",
             "/workspace/repo",
             payload.image,
@@ -247,6 +264,13 @@ def create_container(container_name: str, workspace_path: Path, payload: Executi
         capture_output=True,
         text=True,
     )
+
+
+def resolve_host_workspace_path(workspace_path: Path) -> Path:
+    shared_root = Path(settings.shared_workspace_root).resolve()
+    host_root = Path(settings.host_workspace_root).resolve()
+    relative_path = workspace_path.resolve().relative_to(shared_root)
+    return host_root / relative_path
 
 
 def start_container(container_name: str) -> None:
@@ -299,17 +323,27 @@ def remove_container(container_name: str) -> None:
 
 def rewrite_python_command(command: list[str]) -> list[str]:
     if len(command) >= 3 and command[0] == "python":
+        if command[1] == "-m" and command[2] == "pytest":
+            return command
         return ["/workspace/out/venv/bin/python", *command[1:]]
     return command
 
 
-def build_response(*, python_version: str, limits: ExecutionLimits, steps: dict, error: dict | None) -> ExecutionResponse:
+def build_response(
+    *,
+    python_version: str,
+    platform_system: str,
+    limits: ExecutionLimits,
+    steps: dict,
+    error: dict | None,
+) -> ExecutionResponse:
     return ExecutionResponse(
         python_version=python_version,
+        platform_system=platform_system,
         isolation={
             "network_mode": "none",
             "read_only_rootfs": True,
-            "repo_mount_read_only": True,
+            "repo_mount_read_only": False,
             "cap_drop_all": True,
             "no_new_privileges": True,
             "cpus": limits.cpus,

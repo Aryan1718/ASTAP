@@ -120,7 +120,12 @@ def _require_job(session, run_id: str, stage: str):
 
 def _load_discover_artifact(discover_job) -> DiscoverTargetsArtifact:
     artifact = next(
-        (item for item in discover_job.artifacts_json if item.get("path") == "discover/targets.json"),
+        (
+            item
+            for item in discover_job.artifacts_json
+            if item.get("path") == "discover/targets.json"
+            or item.get("artifact_type") in {"discover_targets", "targets_json"}
+        ),
         None,
     )
     if artifact is None:
@@ -253,6 +258,12 @@ def _correlate_generated_failure(*, suite_key: str, file_path: str | None, class
 
 
 def _build_summary_payload(run, execution_results: dict, failure_records: list[dict], previous_analysis: dict | None) -> dict:
+    environment = execution_results.get("environment") if isinstance(execution_results, dict) else {}
+    if not isinstance(environment, dict):
+        environment = {}
+    for record in failure_records:
+        record["environment"] = environment
+
     existing_suite = execution_results.get("existing_tests") or {}
     generated_suite = execution_results.get("generated_tests") or {}
     overall_result = execution_results.get("overall_result")
@@ -648,6 +659,12 @@ def _apply_failure_heuristics(
                 else:
                     heuristic_tags.append("recurring_regression")
 
+            if _is_windows_path_assertion_noise(record):
+                score -= 0.28
+                failure_category = "generated_test_issue"
+                severity = "low"
+                heuristic_tags.extend(["os_specific_path_semantics", "windows_only_path_case"])
+
         score = max(0.0, min(1.0, round(score, 2)))
         if score >= 0.8:
             confidence = "high"
@@ -674,6 +691,28 @@ def _apply_failure_heuristics(
 
 def _detail_text(record: dict) -> str:
     return f"{record.get('message', '')}\n{record.get('traceback_excerpt', '')}".lower()
+
+
+def _is_windows_path_assertion_noise(record: dict) -> bool:
+    if record.get("suite") != "generated":
+        return False
+    if record.get("recipe_id") != "path_traversal":
+        return False
+
+    environment = record.get("environment") or {}
+    platform_system = str(environment.get("platform_system") or "").lower()
+    if platform_system not in {"linux", "darwin"}:
+        return False
+
+    combined_text = "\n".join(
+        [
+            str(record.get("test_name") or "").lower(),
+            str(record.get("message") or "").lower(),
+            str(record.get("traceback_excerpt") or "").lower(),
+            str(record.get("generated_test_file") or "").lower(),
+        ]
+    )
+    return any(marker in combined_text for marker in ["windows", "win.ini", "..\\\\"])
 
 
 def _error_kind(detail: str) -> str:

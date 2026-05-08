@@ -113,10 +113,11 @@ def test_generated_path_traversal_signal():
             )
             return SimpleNamespace(
                 python_version="Python 3.12.9",
+                platform_system="Linux",
                 isolation={
                     "network_mode": "none",
                     "read_only_rootfs": True,
-                    "repo_mount_read_only": True,
+                    "repo_mount_read_only": False,
                     "cap_drop_all": True,
                     "no_new_privileges": True,
                     "cpus": 1.0,
@@ -135,18 +136,10 @@ def test_generated_path_traversal_signal():
                             "duration_seconds": 0.1,
                         }
                     ],
-                    "install": [
-                        {
-                            "command": ["/workspace/out/venv/bin/python", "-m", "pip", "install", "pytest"],
-                            "exit_code": 0,
-                            "stdout": "installed\n",
-                            "stderr": "",
-                            "duration_seconds": 0.2,
-                        }
-                    ],
+                    "install": [],
                     "existing_suite": {
                         "command": [
-                            "/workspace/out/venv/bin/python",
+                            "python",
                             "-m",
                             "pytest",
                             "tests",
@@ -160,7 +153,7 @@ def test_generated_path_traversal_signal():
                     },
                     "generated_suite": {
                         "command": [
-                            "/workspace/out/venv/bin/python",
+                            "python",
                             "-m",
                             "pytest",
                             ".astap/generated_tests",
@@ -253,7 +246,7 @@ def test_generated_path_traversal_signal():
             SUPABASE_URL="https://example.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="service-role-key",
             SUPABASE_STORAGE_BUCKET="runs",
-            EXECUTE_TESTS_IMAGE="astap-executor-python:base",
+            EXECUTE_TESTS_IMAGE="astsp-executor:latest",
             EXECUTE_TESTS_SHARED_WORKSPACE_ROOT=str(tmp_path / "shared"),
             EXECUTOR_BASE_URL="http://executor:8080",
         ),
@@ -278,8 +271,9 @@ def test_generated_path_traversal_signal():
     assert results_payload["overall_result"] == "completed_with_failures"
     assert results_payload["execution_plan"]["framework"] == "pytest"
     assert results_payload["execution_plan"]["existing_test_command"]["source"] == "repo_detection.pytest"
-    assert results_payload["attempted_commands"][0] == ["python", "-m", "pip", "install", "pytest"]
+    assert results_payload["attempted_commands"][0] == ["python", "-m", "pytest", "tests", "--ignore=.astap/generated_tests"]
     assert results_payload["environment"]["execution_mode"] == "bounded_container"
+    assert results_payload["environment"]["platform_system"] == "Linux"
     assert results_payload["environment"]["worker_has_docker_socket"] is False
     assert results_payload["isolation"]["network_mode"] == "none"
     assert results_payload["install"]["offline"] is True
@@ -295,7 +289,7 @@ def test_generated_path_traversal_signal():
     assert marks["output_json"]["existing_tests"]["status"] == "passed"
     assert marks["output_json"]["generated_tests"]["status"] == "failed"
     assert marks["output_json"]["execution_plan"]["suite_timeout_seconds"] == 600
-    assert marks["output_json"]["isolation"]["repo_mount_read_only"] is True
+    assert marks["output_json"]["isolation"]["repo_mount_read_only"] is False
     assert enqueued == {"job_id": "analyze-job-1", "rq_job_id": "rq-analyze"}
 
 
@@ -327,8 +321,8 @@ testpaths = ["unit_tests", "integration_tests"]
 
     plan = detect_execution_plan(repo_path=repo_path, run_config={}, config=config)
 
-    assert plan.install_commands[1].command == ["python", "-m", "pip", "install", ".[test]"]
-    assert plan.install_commands[1].source == "repo.pyproject_toml"
+    assert plan.install_commands[0].command == ["python", "-m", "pip", "install", ".[test]"]
+    assert plan.install_commands[0].source == "repo.pyproject_toml"
     assert plan.existing_test_command.command[:5] == ["python", "-m", "pytest", "unit_tests", "integration_tests"]
     assert plan.existing_test_command.command[-1] == "--ignore=.astap/generated_tests"
     assert "Detected pyproject.toml for package installation" in plan.detection_notes
@@ -386,6 +380,7 @@ def test_build_executor_request_uses_bounded_workspace_mounts(tmp_path: Path) ->
         SUPABASE_SERVICE_ROLE_KEY="service-role-key",
         SUPABASE_STORAGE_BUCKET="runs",
         EXECUTE_TESTS_SHARED_WORKSPACE_ROOT=str(tmp_path / "shared"),
+        EXECUTE_TESTS_HOST_WORKSPACE_ROOT=str(tmp_path / "host-shared"),
     ).execute_tests_config()
     plan = detect_execution_plan(repo_path=tmp_path, run_config={}, config=config)
 
@@ -434,7 +429,7 @@ def test_execute_tests_job_marks_stage_failed_and_uploads_results_on_environment
                     "bootstrap": [],
                     "install": [
                         {
-                            "command": ["/workspace/out/venv/bin/python", "-m", "pip", "install", "pytest"],
+                            "command": ["/workspace/out/venv/bin/python", "-m", "pip", "install", "-r", "requirements.txt"],
                             "exit_code": 1,
                             "stdout": "",
                             "stderr": "Temporary failure in name resolution",
@@ -446,7 +441,7 @@ def test_execute_tests_job_marks_stage_failed_and_uploads_results_on_environment
                 },
                 error={
                     "type": "environment_setup_failed",
-                    "message": "Dependency install failed: /workspace/out/venv/bin/python -m pip install pytest",
+                    "message": "Dependency install failed: /workspace/out/venv/bin/python -m pip install -r requirements.txt",
                 },
             )
 
@@ -522,6 +517,7 @@ def test_execute_tests_job_marks_stage_failed_and_uploads_results_on_environment
             SUPABASE_URL="https://example.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="service-role-key",
             SUPABASE_STORAGE_BUCKET="runs",
+            EXECUTE_TESTS_IMAGE="astsp-executor:latest",
             EXECUTE_TESTS_SHARED_WORKSPACE_ROOT=str(tmp_path / "shared"),
             EXECUTOR_BASE_URL="http://executor:8080",
         ),

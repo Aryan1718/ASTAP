@@ -77,15 +77,14 @@ def test_execution_summary_endpoint_returns_results_payload(monkeypatch) -> None
                 "overall_result": "completed_with_failures",
                 "environment": {
                     "python_version": "3.12.3",
-                    "execution_image": "python:3.12-slim",
+                    "platform_system": "Linux",
+                    "execution_image": "astsp-executor:latest",
                     "working_directory": "repo",
                     "generated_tests_root": ".astap/generated_tests",
                 },
                 "execution_plan": {
                     "framework": "pytest",
-                    "install_commands": [
-                        {"command": ["python", "-m", "pip", "install", "pytest"], "source": "platform_default.pytest"}
-                    ],
+                    "install_commands": [],
                     "existing_test_command": {
                         "command": ["python", "-m", "pytest", "tests"],
                         "source": "repo_detection.pytest",
@@ -98,7 +97,6 @@ def test_execution_summary_endpoint_returns_results_payload(monkeypatch) -> None
                     "detection_notes": ["Detected requirements.txt for dependency installation"],
                 },
                 "attempted_commands": [
-                    ["python", "-m", "pip", "install", "pytest"],
                     ["python", "-m", "pytest", "tests"],
                 ],
                 "existing_tests": {
@@ -142,6 +140,7 @@ def test_execution_summary_endpoint_returns_results_payload(monkeypatch) -> None
     assert payload["run_id"] == "run-1"
     assert payload["stage_status"] == "succeeded"
     assert payload["environment"]["python_version"] == "3.12.3"
+    assert payload["environment"]["platform_system"] == "Linux"
     assert payload["execution_plan"]["existing_test_command"]["source"] == "repo_detection.pytest"
     assert payload["attempted_commands"][0] == ["python", "-m", "pip", "install", "pytest"]
     assert payload["existing_tests"]["passed"] == 3

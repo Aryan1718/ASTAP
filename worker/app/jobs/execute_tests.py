@@ -60,6 +60,7 @@ class ExecutionPlan:
 @dataclass(slots=True)
 class ExecutorExecutionResult:
     python_version: str
+    platform_system: str
     isolation: dict
     steps: dict
     error: dict | None
@@ -87,6 +88,7 @@ class ExecutorClient:
 
         return ExecutorExecutionResult(
             python_version=str(response_payload.get("python_version", "unknown")),
+            platform_system=str(response_payload.get("platform_system", "unknown")),
             isolation=response_payload.get("isolation", {}),
             steps=response_payload.get("steps", {}),
             error=response_payload.get("error"),
@@ -175,6 +177,7 @@ def execute_tests_job(run_id: str, job_id: str) -> None:
             config=config,
             execution_plan=execution_plan,
             python_version=execution_result.python_version,
+            platform_system=execution_result.platform_system,
             isolation=execution_result.isolation,
             install_results=install_results,
             existing_suite=existing_suite,
@@ -342,7 +345,7 @@ def detect_execution_plan(*, repo_path: Path, run_config: dict, config: ExecuteT
 
 
 def detect_install_commands(repo_path: Path, detection_notes: list[str]) -> list[CommandSelection]:
-    commands = [CommandSelection(command=["python", "-m", "pip", "install", "pytest"], source="platform_default.pytest")]
+    commands: list[CommandSelection] = []
     requirements_path = repo_path / "requirements.txt"
     pyproject_path = repo_path / "pyproject.toml"
     if requirements_path.exists():
@@ -359,7 +362,7 @@ def detect_install_commands(repo_path: Path, detection_notes: list[str]) -> list
         commands.append(CommandSelection(command=detect_pyproject_install_command(pyproject_path), source="repo.pyproject_toml"))
         detection_notes.append("Detected pyproject.toml for package installation")
     else:
-        detection_notes.append("No Python dependency manifest detected; using platform default pytest install only")
+        detection_notes.append("No Python dependency manifest detected; relying on the execution image for pytest")
     return commands
 
 
@@ -640,6 +643,7 @@ def build_results_payload(
     config: ExecuteTestsConfig,
     execution_plan: ExecutionPlan,
     python_version: str,
+    platform_system: str,
     isolation: dict,
     install_results: list[dict],
     existing_suite: dict,
@@ -663,6 +667,7 @@ def build_results_payload(
         "framework": execution_plan.framework,
         "environment": {
             "python_version": python_version,
+            "platform_system": platform_system,
             "execution_image": config.image,
             "working_directory": "repo",
             "generated_tests_root": ".astap/generated_tests",

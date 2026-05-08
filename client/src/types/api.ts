@@ -227,6 +227,28 @@ export type GeneratedTestFileContent = {
   language: string;
 };
 
+export type GeneratedTestCase = {
+  case_id: string;
+  name: string;
+  classname?: string | null;
+  generated_test_file?: string | null;
+  status: string;
+  duration_seconds: number;
+  message?: string | null;
+  target_key?: string | null;
+  target_type?: string | null;
+  symbol?: string | null;
+  test_kind?: string | null;
+  recipe_id?: string | null;
+  recipe_name?: string | null;
+};
+
+export type GeneratedTestCases = {
+  run_id: string;
+  source: string;
+  cases: GeneratedTestCase[];
+};
+
 export type ProjectPayload = {
   name: string;
   repo_url: string;

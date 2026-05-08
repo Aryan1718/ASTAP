@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../lib/apiClient";
 import { cn } from "../../lib/utils";
@@ -11,6 +12,7 @@ import { StatusBadge } from "../ui/StatusBadge";
 type ExecutionSummaryPanelProps = {
   token: string;
   run: RunDetail;
+  showOpenPageButton?: boolean;
 };
 
 const suiteOrder = ["existing", "generated", "combined"] as const;
@@ -30,7 +32,8 @@ function suiteLabel(suiteKey: string) {
   return suiteKey.replace(/_/g, " ");
 }
 
-export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps) {
+export function ExecutionSummaryPanel({ token, run, showOpenPageButton = true }: ExecutionSummaryPanelProps) {
+  const navigate = useNavigate();
   const executeStage = useMemo(() => findStage(run, "execute_tests"), [run]);
   const [summary, setSummary] = useState<ExecutionSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -167,7 +170,7 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
       <div className="border-b border-line/80 pb-6">
         <p className="section-eyebrow">Execution</p>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="mt-2 text-[2rem] leading-tight text-ink" style={{ fontWeight: 460 }}>
               Test execution summary
             </h2>
@@ -175,7 +178,14 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
               Compare baseline repository tests against ASTAP generated tests and inspect the captured logs.
             </p>
           </div>
-          {summary?.overall_result ? <StatusBadge status={summary.overall_result} className="text-[11px]" /> : null}
+          <div className="flex flex-wrap items-center gap-3">
+            {showOpenPageButton ? (
+              <Button variant="ghost" className="px-4 py-2 text-sm" onClick={() => navigate(`/app/runs/${run.id}/execution`)}>
+                Open execution page
+              </Button>
+            ) : null}
+            {summary?.overall_result ? <StatusBadge status={summary.overall_result} className="text-[11px]" /> : null}
+          </div>
         </div>
       </div>
 
@@ -203,8 +213,8 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
       ) : null}
 
       {!summaryLoading && !summaryError && summary ? (
-        <div className="mt-6 grid gap-6">
-          <div className="grid gap-4 xl:grid-cols-2">
+        <div className="mt-6 grid gap-6 min-w-0">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {suites.map((suite) => {
               const isSelected = selectedSuite === suite.suite_key;
               return (
@@ -212,7 +222,7 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
                   key={suite.suite_key}
                   type="button"
                   className={cn(
-                    "border p-5 text-left transition",
+                    "min-w-0 border p-5 text-left transition",
                     isSelected ? "border-[#cbb7fb] bg-[#f4eefc]" : "border-line bg-transparent hover:bg-[#fbf8f5]"
                   )}
                   onClick={() => setSelectedSuite(suite.suite_key)}
@@ -249,8 +259,8 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
             })}
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-            <div className="border border-line px-5 py-5">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <div className="min-w-0 border border-line px-5 py-5">
               <p className="m-0 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Environment</p>
               <div className="mt-4 grid gap-4 text-sm">
                 <div>
@@ -272,7 +282,7 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
               </div>
             </div>
 
-            <div className="border border-line px-5 py-5">
+            <div className="min-w-0 border border-line px-5 py-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="m-0 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Logs</p>
@@ -291,7 +301,7 @@ export function ExecutionSummaryPanel({ token, run }: ExecutionSummaryPanelProps
                 <div className="mt-4 rounded-2xl border border-line bg-[#f7efee] px-4 py-4 text-sm text-ink">{logError}</div>
               ) : null}
               {!logLoading && !logError ? (
-                <pre className="mt-4 max-h-[28rem] overflow-auto rounded-2xl border border-line bg-[#fbf8f5] p-4 text-xs leading-6 text-ink">
+                <pre className="mt-4 min-w-0 max-h-[28rem] overflow-auto rounded-2xl border border-line bg-[#fbf8f5] p-4 text-xs leading-6 text-ink">
                   {activeLog?.content ?? "No log available for the selected suite."}
                 </pre>
               ) : null}

@@ -93,6 +93,7 @@ class ExecutionArtifactOut(BaseModel):
 
 class ExecutionEnvironmentOut(BaseModel):
     python_version: Optional[str] = None
+    platform_system: Optional[str] = None
     execution_image: Optional[str] = None
     working_directory: Optional[str] = None
     generated_tests_root: Optional[str] = None
@@ -199,6 +200,28 @@ class GeneratedTestFileContentResponse(BaseModel):
     path: str
     content: str
     language: str
+
+
+class GeneratedTestCaseOut(BaseModel):
+    case_id: str
+    name: str
+    classname: Optional[str] = None
+    generated_test_file: Optional[str] = None
+    status: str
+    duration_seconds: float = 0.0
+    message: Optional[str] = None
+    target_key: Optional[str] = None
+    target_type: Optional[str] = None
+    symbol: Optional[str] = None
+    test_kind: Optional[str] = None
+    recipe_id: Optional[str] = None
+    recipe_name: Optional[str] = None
+
+
+class GeneratedTestCasesResponse(BaseModel):
+    run_id: str
+    source: str
+    cases: list[GeneratedTestCaseOut]
 
 
 class AnalysisArtifactOut(BaseModel):

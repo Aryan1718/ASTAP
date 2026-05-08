@@ -270,5 +270,164 @@ def test_generated_tests_file_endpoint_falls_back_to_known_paths_and_zip(monkeyp
     assert response.json()["content"] == "def test_zip_fallback():\n    assert True\n"
 
 
+def test_generated_test_cases_endpoint_returns_all_cases_from_execution_junit(monkeypatch) -> None:
+    client = _authorized_client(monkeypatch)
+    _patch_run_and_job(
+        monkeypatch,
+        artifacts_json=[
+            {
+                "artifact_type": "generated_tests_manifest",
+                "bucket": "runs",
+                "key": "workspace-1/project-1/run-1/generated_tests/test_index.json",
+            }
+        ],
+    )
+
+    def fake_get_job_by_stage(session, run_id, stage):
+        if stage == "generate_tests":
+            return SimpleNamespace(
+                run_id=run_id,
+                stage=stage,
+                status="succeeded",
+                artifacts_json=[
+                    {
+                        "artifact_type": "generated_tests_manifest",
+                        "bucket": "runs",
+                        "key": "workspace-1/project-1/run-1/generated_tests/test_index.json",
+                    }
+                ],
+                output_json={},
+            )
+        if stage == "execute_tests":
+            return SimpleNamespace(
+                run_id=run_id,
+                stage=stage,
+                status="succeeded",
+                artifacts_json=[
+                    {
+                        "artifact_type": "execution_junit",
+                        "bucket": "runs",
+                        "key": "workspace-1/project-1/run-1/execute_tests/junit/generated-tests.xml",
+                        "path": "execute_tests/junit/generated-tests.xml",
+                    }
+                ],
+                output_json={},
+            )
+        return None
+
+    monkeypatch.setattr("api.app.generated_tests.get_job_by_stage", fake_get_job_by_stage)
+
+    generated_junit = """
+<testsuite tests="3" failures="1" errors="0" skipped="1">
+  <testcase classname="test_parse_config_a1b2c3" name="test_allows_safe_input" file="generated_tests/services/test_parse_config_a1b2c3.py" time="0.2" />
+  <testcase classname="test_parse_config_a1b2c3" name="test_blocks_traversal" file="generated_tests/services/test_parse_config_a1b2c3.py" time="0.3">
+    <failure message="IndexError: index out of range">traceback</failure>
+  </testcase>
+  <testcase classname="test_get_user_f9e8d7" name="test_windows_variant" file="generated_tests/api/test_get_user_f9e8d7.py" time="0.1">
+    <skipped message="windows only" />
+  </testcase>
+</testsuite>
+""".strip()
+
+    def fake_download_text(bucket: str, key: str) -> str:
+        if key.endswith("test_index.json"):
+            return _build_manifest_payload()
+        if key.endswith("generated-tests.xml"):
+            return generated_junit
+        raise AssertionError(key)
+
+    monkeypatch.setattr("api.app.generated_tests.download_storage_object_text", fake_download_text)
+
+    response = client.get("/runs/run-1/generated-tests/cases")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "execution_junit"
+    assert [case["name"] for case in payload["cases"]] == [
+        "test_allows_safe_input",
+        "test_blocks_traversal",
+        "test_windows_variant",
+    ]
+    assert [case["status"] for case in payload["cases"]] == ["passed", "failed", "skipped"]
+
+
+def test_generated_test_cases_endpoint_falls_back_to_parsing_generated_files(monkeypatch) -> None:
+    client = _authorized_client(monkeypatch)
+    _patch_run_and_job(
+        monkeypatch,
+        artifacts_json=[
+            {
+                "artifact_type": "generated_tests_manifest",
+                "bucket": "runs",
+                "key": "workspace-1/project-1/run-1/generated_tests/test_index.json",
+            },
+            {
+                "artifact_type": "generated_test_file",
+                "bucket": "runs",
+                "key": "workspace-1/project-1/run-1/generated_tests/services/test_parse_config_a1b2c3.py",
+                "path": "generated_tests/services/test_parse_config_a1b2c3.py",
+            },
+            {
+                "artifact_type": "generated_test_file",
+                "bucket": "runs",
+                "key": "workspace-1/project-1/run-1/generated_tests/api/test_get_user_f9e8d7.py",
+                "path": "generated_tests/api/test_get_user_f9e8d7.py",
+            },
+        ],
+    )
+
+    def fake_get_job_by_stage(session, run_id, stage):
+        if stage == "generate_tests":
+            return SimpleNamespace(
+                run_id=run_id,
+                stage=stage,
+                status="succeeded",
+                artifacts_json=[
+                    {
+                        "artifact_type": "generated_tests_manifest",
+                        "bucket": "runs",
+                        "key": "workspace-1/project-1/run-1/generated_tests/test_index.json",
+                    },
+                    {
+                        "artifact_type": "generated_test_file",
+                        "bucket": "runs",
+                        "key": "workspace-1/project-1/run-1/generated_tests/services/test_parse_config_a1b2c3.py",
+                        "path": "generated_tests/services/test_parse_config_a1b2c3.py",
+                    },
+                    {
+                        "artifact_type": "generated_test_file",
+                        "bucket": "runs",
+                        "key": "workspace-1/project-1/run-1/generated_tests/api/test_get_user_f9e8d7.py",
+                        "path": "generated_tests/api/test_get_user_f9e8d7.py",
+                    },
+                ],
+                output_json={},
+            )
+        if stage == "execute_tests":
+            return None
+        return None
+
+    monkeypatch.setattr("api.app.generated_tests.get_job_by_stage", fake_get_job_by_stage)
+
+    def fake_download_text(bucket: str, key: str) -> str:
+        if key.endswith("test_index.json"):
+            return _build_manifest_payload()
+        if key.endswith("test_parse_config_a1b2c3.py"):
+            return "def test_alpha():\n    assert True\n\ndef helper():\n    return None\n\ndef test_beta():\n    assert True\n"
+        if key.endswith("test_get_user_f9e8d7.py"):
+            return "async def test_gamma():\n    assert True\n"
+        raise AssertionError(key)
+
+    monkeypatch.setattr("api.app.generated_tests.download_storage_object_text", fake_download_text)
+
+    response = client.get("/runs/run-1/generated-tests/cases")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "generated_files"
+    assert [case["name"] for case in payload["cases"]] == ["test_alpha", "test_beta", "test_gamma"]
+    assert all(case["status"] == "not_run" for case in payload["cases"])
+
+
 def teardown_function() -> None:
     app.dependency_overrides.clear()
