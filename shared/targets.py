@@ -143,6 +143,7 @@ class GeneratedTestManifest(BaseModel):
     run_id: str
     generated_at: str
     files: list[GeneratedTestManifestEntry]
+    empty_reason: str | None = None
 
 
 class GeneratedTestFileContent(BaseModel):
@@ -207,11 +208,17 @@ def build_generation_packet_stub(
     )
 
 
-def build_generated_test_manifest(run_id: str, files: list[GeneratedTestManifestEntry]) -> GeneratedTestManifest:
+def build_generated_test_manifest(
+    run_id: str,
+    files: list[GeneratedTestManifestEntry],
+    *,
+    empty_reason: str | None = None,
+) -> GeneratedTestManifest:
     return GeneratedTestManifest(
         run_id=run_id,
         generated_at=datetime.now(timezone.utc).isoformat(),
         files=files,
+        empty_reason=empty_reason,
     )
 
 

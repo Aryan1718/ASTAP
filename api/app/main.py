@@ -26,6 +26,7 @@ from shared.repository import (
 )
 from shared.schemas import (
     GeneratedTestFileContentResponse,
+    GeneratedTestCasesResponse,
     GeneratedTestManifestOut,
     GeneratedTestTreeResponse,
     ExecutionLogOut,
@@ -310,6 +311,17 @@ def get_generated_test_content_endpoint(
     workspace = require_workspace(session, current_user)
     payload = GeneratedTestsService(session, workspace.id).get_generated_test_file_content(run_id, path)
     return GeneratedTestFileContentResponse.model_validate(payload.model_dump())
+
+
+@app.get("/runs/{run_id}/generated-tests/cases", response_model=GeneratedTestCasesResponse)
+def get_generated_test_cases_endpoint(
+    run_id: str,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GeneratedTestCasesResponse:
+    workspace = require_workspace(session, current_user)
+    payload = GeneratedTestsService(session, workspace.id).get_generated_test_cases(run_id)
+    return GeneratedTestCasesResponse.model_validate(payload)
 
 
 @app.get("/runs/{run_id}/generated-tests/content", response_model=GeneratedTestFileContentResponse, include_in_schema=False)

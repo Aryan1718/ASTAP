@@ -93,6 +93,7 @@ class ExecutionArtifactOut(BaseModel):
 
 class ExecutionEnvironmentOut(BaseModel):
     python_version: Optional[str] = None
+    platform_system: Optional[str] = None
     execution_image: Optional[str] = None
     working_directory: Optional[str] = None
     generated_tests_root: Optional[str] = None
@@ -127,9 +128,31 @@ class ExecutionPlanOut(BaseModel):
     framework: str
     install_commands: list[ExecutionCommandOut] = Field(default_factory=list)
     existing_test_command: Optional[ExecutionCommandOut] = None
+    generated_collect_command: Optional[ExecutionCommandOut] = None
     generated_test_command: Optional[ExecutionCommandOut] = None
     suite_timeout_seconds: Optional[int] = None
     detection_notes: list[str] = Field(default_factory=list)
+
+
+class GeneratedTestFileExecutionOut(BaseModel):
+    path: str
+    target_key: Optional[str] = None
+    symbol: Optional[str] = None
+    status: str
+    attempt_count: int = 1
+    final_attempt: int = 1
+    repair_status: Optional[str] = None
+    collection_error_excerpt: Optional[str] = None
+    repaired_from_path: Optional[str] = None
+    initial_attempt_artifact_path: Optional[str] = None
+    final_attempt_artifact_path: Optional[str] = None
+    collected_test_count: int = 0
+    executed_test_count: int = 0
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    skipped: int = 0
+    message: Optional[str] = None
 
 
 class ExecutionSuiteOut(BaseModel):
@@ -146,6 +169,24 @@ class ExecutionSuiteOut(BaseModel):
     duration_seconds: float = 0.0
     log_path: Optional[str] = None
     junit_path: Optional[str] = None
+    quality_status: Optional[str] = None
+    quality_failure_reason: Optional[str] = None
+    files_generated: int = 0
+    files_collected: int = 0
+    files_executed: int = 0
+    collection_failed_files: int = 0
+    collection_coverage_ratio: float = 0.0
+    collected_test_count: int = 0
+    executed_test_count: int = 0
+    collect_command: Optional[list[str]] = None
+    collect_command_source: Optional[str] = None
+    collect_exit_code: Optional[int] = None
+    collect_log_path: Optional[str] = None
+    repair_passes_run: int = 0
+    files_repaired: int = 0
+    files_repaired_and_collected: int = 0
+    repair_log_path: Optional[str] = None
+    file_results: list[GeneratedTestFileExecutionOut] = Field(default_factory=list)
 
 
 class ExecutionSummaryOut(BaseModel):
@@ -176,6 +217,7 @@ class GeneratedTestManifestOut(BaseModel):
     run_id: str
     generated_at: str
     files: list[GeneratedTestManifestEntry]
+    empty_reason: str | None = None
 
 
 class GeneratedTestTreeNode(BaseModel):
@@ -199,6 +241,28 @@ class GeneratedTestFileContentResponse(BaseModel):
     path: str
     content: str
     language: str
+
+
+class GeneratedTestCaseOut(BaseModel):
+    case_id: str
+    name: str
+    classname: Optional[str] = None
+    generated_test_file: Optional[str] = None
+    status: str
+    duration_seconds: float = 0.0
+    message: Optional[str] = None
+    target_key: Optional[str] = None
+    target_type: Optional[str] = None
+    symbol: Optional[str] = None
+    test_kind: Optional[str] = None
+    recipe_id: Optional[str] = None
+    recipe_name: Optional[str] = None
+
+
+class GeneratedTestCasesResponse(BaseModel):
+    run_id: str
+    source: str
+    cases: list[GeneratedTestCaseOut]
 
 
 class AnalysisArtifactOut(BaseModel):
@@ -284,6 +348,7 @@ class AnalysisSummaryOut(BaseModel):
     overall_assessment: str
     baseline_repo_status: str
     generated_tests_status: str
+    generated_tests_quality_failure_reason: Optional[str] = None
     infrastructure_status: str
     analysis_mode: str
     llm_summary_available: bool = False

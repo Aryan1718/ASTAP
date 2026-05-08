@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
-import type { GeneratedTestManifestEntry } from "../../types/api";
+import type { GeneratedTestCase, GeneratedTestManifestEntry } from "../../types/api";
 
 type GeneratedTestsFileTreeProps = {
   files: GeneratedTestManifestEntry[];
+  testCases: GeneratedTestCase[];
   selectedPath: string | null;
+  selectedCaseId: string | null;
   onSelect: (path: string) => void;
+  onSelectCase: (caseId: string, path: string) => void;
 };
 
 type FileGroup = {
@@ -58,8 +61,40 @@ function targetLabel(file: GeneratedTestManifestEntry) {
   return `${file.symbol} · ${file.test_kind ?? "generated"}`;
 }
 
-export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: GeneratedTestsFileTreeProps) {
+function groupedCases(testCases: GeneratedTestCase[]) {
+  return testCases.reduce<Record<string, GeneratedTestCase[]>>((accumulator, testCase) => {
+    if (!testCase.generated_test_file) {
+      return accumulator;
+    }
+    accumulator[testCase.generated_test_file] = [...(accumulator[testCase.generated_test_file] ?? []), testCase];
+    return accumulator;
+  }, {});
+}
+
+function statusTone(status: string) {
+  switch (status) {
+    case "failed":
+    case "error":
+      return "bg-[#d05b3f]";
+    case "passed":
+      return "bg-[#2f7d4a]";
+    case "skipped":
+      return "bg-[#d3a14a]";
+    default:
+      return "bg-[#b6aea3]";
+  }
+}
+
+export function GeneratedTestsFileTree({
+  files,
+  testCases,
+  selectedPath,
+  selectedCaseId,
+  onSelect,
+  onSelectCase,
+}: GeneratedTestsFileTreeProps) {
   const groups = useMemo(() => groupFiles(files), [files]);
+  const casesByPath = useMemo(() => groupedCases(testCases), [testCases]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groupFiles(files).map((group) => [group.key, true]))
   );
@@ -96,31 +131,60 @@ export function GeneratedTestsFileTree({ files, selectedPath, onSelect }: Genera
                   {group.files.map((file) => {
                     const path = file.generated_test_file ?? "";
                     const isSelected = path === selectedPath;
+                    const cases = casesByPath[path] ?? [];
 
                     return (
-                      <button
-                        key={path}
-                        type="button"
-                        className={cn(
-                          "focus-ring group flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition",
-                          isSelected
-                            ? "border-[#cbb7fb] bg-[#f4eefc]"
-                            : "border-transparent bg-transparent hover:border-line hover:bg-[#fbf8f5]"
-                        )}
-                        onClick={() => onSelect(path)}
-                        aria-current={isSelected ? "true" : undefined}
-                      >
-                        <span
+                      <div key={path}>
+                        <button
+                          type="button"
                           className={cn(
-                            "mt-1 h-2.5 w-2.5 flex-none",
-                            isSelected ? "bg-[#714cb6]" : "bg-[#d5d0ca] group-hover:bg-[#cbb7fb]"
+                            "focus-ring group flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition",
+                            isSelected
+                              ? "border-[#cbb7fb] bg-[#f4eefc]"
+                              : "border-transparent bg-transparent hover:border-line hover:bg-[#fbf8f5]"
                           )}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-ink">{filenameFromPath(path)}</span>
-                          <span className="mt-1 block truncate text-xs text-muted">{targetLabel(file)}</span>
-                        </span>
-                      </button>
+                          onClick={() => onSelect(path)}
+                          aria-current={isSelected ? "true" : undefined}
+                        >
+                          <span
+                            className={cn(
+                              "mt-1 h-2.5 w-2.5 flex-none",
+                              isSelected ? "bg-[#714cb6]" : "bg-[#d5d0ca] group-hover:bg-[#cbb7fb]"
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-ink">{filenameFromPath(path)}</span>
+                            <span className="mt-1 block truncate text-xs text-muted">{targetLabel(file)}</span>
+                          </span>
+                        </button>
+                        {cases.length ? (
+                          <div className="mt-1 grid gap-1 pl-8">
+                            {cases.map((testCase) => {
+                              const isCaseSelected = testCase.case_id === selectedCaseId;
+                              return (
+                                <button
+                                  key={testCase.case_id}
+                                  type="button"
+                                  className={cn(
+                                    "focus-ring flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-xs transition",
+                                    isCaseSelected ? "bg-[#efe8fa]" : "hover:bg-[#fbf8f5]"
+                                  )}
+                                  onClick={() => onSelectCase(testCase.case_id, path)}
+                                  aria-current={isCaseSelected ? "true" : undefined}
+                                >
+                                  <span className={cn("mt-1 h-2 w-2 flex-none rounded-full", statusTone(testCase.status))} />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-ink">{testCase.name}</span>
+                                    <span className="mt-0.5 block truncate uppercase tracking-[0.08em] text-muted">
+                                      {testCase.status}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </div>

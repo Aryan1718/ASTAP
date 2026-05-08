@@ -120,9 +120,10 @@ def discover_job(run_id: str, job_id: str) -> None:
         )
 
         targets_artifact = {
-            "artifact_type": "targets_json",
+            "artifact_type": "discover_targets",
             "bucket": settings.supabase_storage_bucket,
             "key": object_key,
+            "path": "discover/targets.json",
         }
         mark_job_succeeded_with_artifacts(
             session,
@@ -213,7 +214,7 @@ def extract_targets_from_module(relative_path: Path, source: str, tree: ast.Modu
                     source_excerpt=source_excerpt_for_node(source, node),
                 )
             )
-            targets.extend(fastapi_targets(relative_path, source, node))
+            targets.extend(api_endpoint_targets(relative_path, source, node))
         elif isinstance(node, ast.ClassDef):
             decorators = [decorator_name(decorator) for decorator in node.decorator_list]
             security_metadata = analyze_security_metadata(
@@ -362,7 +363,7 @@ def argument_repr(arg: ast.arg, default: ast.expr | None = None) -> str:
     return rendered
 
 
-def fastapi_targets(
+def api_endpoint_targets(
     relative_path: Path,
     source: str,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -374,16 +375,17 @@ def fastapi_targets(
             continue
         if not isinstance(decorator.func, ast.Attribute):
             continue
-        if decorator.func.attr not in HTTP_METHODS:
-            continue
-        if not decorator.args or not isinstance(decorator.args[0], ast.Constant) or not isinstance(decorator.args[0].value, str):
+        route_details = route_decorator_details(decorator)
+        if route_details is None:
             continue
         security_metadata = analyze_security_metadata(
             node=node,
             target_type="API_ENDPOINT",
             decorators=decorators,
-            route_path=decorator.args[0].value,
+            route_path=route_details["route_path"],
+            framework=route_details["framework"],
         )
+        framework_hints = sorted({route_details["framework"], "pytest", *security_metadata["framework_hints"]})
 
         targets.append(
             build_rich_target(
@@ -394,9 +396,9 @@ def fastapi_targets(
                 line_start=node.lineno,
                 line_end=getattr(node, "end_lineno", node.lineno),
                 decorators=decorators,
-                framework_hints=sorted({"fastapi", "pytest", *security_metadata["framework_hints"]}),
-                http_method=decorator.func.attr.upper(),
-                route_path=decorator.args[0].value,
+                framework_hints=framework_hints,
+                http_method=route_details["http_method"],
+                route_path=route_details["route_path"],
                 recommended_test_kind="api",
                 priority_score=0.95,
                 language="python",
@@ -410,9 +412,10 @@ def fastapi_targets(
                     relative_path=relative_path,
                     target_type="API_ENDPOINT",
                     symbol=node.name,
-                    framework_hints=sorted({"fastapi", "pytest", *security_metadata["framework_hints"]}),
-                    route_path=decorator.args[0].value,
+                    framework_hints=framework_hints,
+                    route_path=route_details["route_path"],
                     decorators=decorators,
+                    framework=route_details["framework"],
                 ),
                 source_excerpt=source_excerpt_for_node(source, node),
             )
@@ -426,6 +429,7 @@ def analyze_security_metadata(
     target_type: str,
     decorators: list[str],
     route_path: str | None = None,
+    framework: str | None = None,
 ) -> dict[str, list[str]]:
     input_sources: set[str] = set()
     dangerous_sinks: set[str] = set()
@@ -435,7 +439,8 @@ def analyze_security_metadata(
 
     if target_type == "API_ENDPOINT":
         input_sources.add("public_input")
-        framework_hints.add("fastapi")
+        if framework:
+            framework_hints.add(framework)
         if route_path and "{" in route_path and "}" in route_path:
             input_sources.add("path_parameter")
 
@@ -443,6 +448,8 @@ def analyze_security_metadata(
         dependency_hints.add(decorator)
         if "router." in decorator or "app." in decorator:
             framework_hints.add("fastapi")
+        if ".route" in decorator or "blueprint." in decorator:
+            framework_hints.add("flask")
         if contains_auth_hint(decorator):
             auth_hints.add("auth_required")
 
@@ -684,6 +691,7 @@ def build_execution_context(
     framework_hints: list[str],
     route_path: str | None,
     decorators: list[str],
+    framework: str | None = None,
 ) -> dict[str, object]:
     module_path = module_path_for_file(relative_path)
     import_hint = f"{module_path}:{symbol}" if module_path else symbol
@@ -693,12 +701,16 @@ def build_execution_context(
         "framework_hints": framework_hints,
     }
     if target_type == "API_ENDPOINT":
-        fastapi_router_symbol = infer_fastapi_router_symbol(decorators)
+        fastapi_router_symbol = infer_fastapi_router_symbol(decorators) if framework == "fastapi" else None
+        flask_app_symbol = infer_flask_app_symbol(decorators) if framework == "flask" else None
         context.update(
             {
+                "api_framework": framework,
                 "route_path": route_path,
                 "fastapi_router_symbol": fastapi_router_symbol,
                 "fastapi_test_client_candidate": "fastapi" in framework_hints and bool(fastapi_router_symbol),
+                "flask_app_symbol": flask_app_symbol,
+                "flask_test_client_candidate": "flask" in framework_hints and bool(flask_app_symbol),
             }
         )
     return context
@@ -718,3 +730,63 @@ def infer_fastapi_router_symbol(decorators: list[str]) -> str | None:
         if decorator.startswith("app."):
             return "app"
     return None
+
+
+def infer_flask_app_symbol(decorators: list[str]) -> str | None:
+    for decorator in decorators:
+        if decorator.startswith("app.route"):
+            return "app"
+        if decorator.startswith("blueprint.route"):
+            return "blueprint"
+    return None
+
+
+def route_decorator_details(decorator: ast.Call) -> dict[str, str] | None:
+    if not isinstance(decorator.func, ast.Attribute):
+        return None
+    route_path = constant_string_arg(decorator)
+    if route_path is None:
+        return None
+
+    if decorator.func.attr in HTTP_METHODS:
+        return {
+            "framework": "fastapi",
+            "http_method": decorator.func.attr.upper(),
+            "route_path": route_path,
+        }
+
+    if decorator.func.attr != "route":
+        return None
+
+    methods = flask_route_methods(decorator)
+    if not methods:
+        methods = ["GET"]
+
+    return {
+        "framework": "flask",
+        "http_method": methods[0],
+        "route_path": route_path,
+    }
+
+
+def constant_string_arg(decorator: ast.Call) -> str | None:
+    if not decorator.args:
+        return None
+    first_arg = decorator.args[0]
+    if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+        return None
+    return first_arg.value
+
+
+def flask_route_methods(decorator: ast.Call) -> list[str]:
+    for keyword in decorator.keywords:
+        if keyword.arg != "methods":
+            continue
+        if not isinstance(keyword.value, (ast.List, ast.Tuple, ast.Set)):
+            return []
+        methods: list[str] = []
+        for element in keyword.value.elts:
+            if isinstance(element, ast.Constant) and isinstance(element.value, str):
+                methods.append(element.value.upper())
+        return methods
+    return []

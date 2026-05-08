@@ -6,9 +6,10 @@ type GeneratedTestsHeaderProps = {
   manifest: GeneratedTestManifest;
   runStatus: string;
   generatedCount: number;
+  testCaseCount: number;
 };
 
-export function GeneratedTestsHeader({ manifest, runStatus, generatedCount }: GeneratedTestsHeaderProps) {
+export function GeneratedTestsHeader({ manifest, runStatus, generatedCount, testCaseCount }: GeneratedTestsHeaderProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line/80 px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -17,6 +18,9 @@ export function GeneratedTestsHeader({ manifest, runStatus, generatedCount }: Ge
         </span>
         <p className="m-0 text-sm text-muted">
           <span className="font-medium text-ink">{generatedCount}</span> file{generatedCount === 1 ? "" : "s"}
+        </p>
+        <p className="m-0 text-sm text-muted">
+          <span className="font-medium text-ink">{testCaseCount}</span> test case{testCaseCount === 1 ? "" : "s"}
         </p>
         <p className="m-0 text-sm text-muted">Generated {formatDateTime(manifest.generated_at)}</p>
       </div>

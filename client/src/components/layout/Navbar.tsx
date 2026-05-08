@@ -13,7 +13,7 @@ export function Navbar() {
   const location = useLocation();
   const { signOut, userEmail } = useAuth();
   const { notify } = useToast();
-  const isGeneratedTestsRoute = location.pathname.includes("/generated-tests");
+  const isDetailWorkspaceRoute = location.pathname.includes("/generated-tests") || location.pathname.includes("/analysis");
 
   async function handleLogout() {
     try {
@@ -70,7 +70,7 @@ export function Navbar() {
           </Button>
         </div>
       </div>
-      {isGeneratedTestsRoute ? null : (
+      {isDetailWorkspaceRoute ? null : (
         <div className="page-shell flex gap-2 overflow-x-auto pb-4 md:hidden">
           {mobileItems.map((item) => (
             <NavLink

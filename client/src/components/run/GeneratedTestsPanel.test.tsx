@@ -135,6 +135,16 @@ describe("GeneratedTestsPanel", () => {
     expect(await screen.findByText("No generated tests found")).toBeInTheDocument();
   });
 
+  it("renders a specific empty state when the manifest explains why nothing was generated", async () => {
+    mockApiClient.getGeneratedTestsManifest.mockResolvedValue(
+      buildManifest({ files: [], empty_reason: "no_eligible_targets_after_runnability_filtering" })
+    );
+
+    render(<GeneratedTestsPanel token="token" run={buildRun()} />);
+
+    expect(await screen.findByText("No eligible targets after filtering")).toBeInTheDocument();
+  });
+
   it("keeps the selected file visually highlighted", async () => {
     mockApiClient.getGeneratedTestsManifest.mockResolvedValue(buildManifest());
     mockApiClient.getGeneratedTestContent.mockImplementation(async (_token, _runId, path) =>

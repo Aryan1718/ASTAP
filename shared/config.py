@@ -6,7 +6,7 @@ class GenerateTestsConfig(BaseModel):
     model: str = "gpt-4.1-mini"
     max_tokens: int = 8000
     temperature: float = 0.2
-    max_targets_per_run: int = 50
+    max_targets_per_run: int = 5
     output_dir: str = "generated_tests"
     enable_service_functions: bool = True
     enable_api_endpoints: bool = True
@@ -35,19 +35,24 @@ class GenerateTestsConfig(BaseModel):
 
 
 class ExecuteTestsConfig(BaseModel):
-    image: str = "python:3.12-slim"
+    image: str = "astsp-executor:latest"
     workspace_root: str = "/workspace"
     output_dir: str = "execute_tests"
     shared_workspace_root: str = "/executor-workspaces"
+    host_workspace_root: str = "/executor-workspaces"
     executor_base_url: str = "http://executor:8080"
     install_timeout_seconds: int = 300
     suite_timeout_seconds: int = 600
+    generated_tests_min_collection_ratio: float = 0.5
+    generated_tests_min_executed_files: int = 1
+    generated_tests_fail_if_zero_collected: bool = True
+    generated_tests_max_repair_passes: int = 1
     cpus: float = 1.0
     memory_mb: int = 1024
     pids: int = 256
     tmpfs_mb: int = 128
 
-    @field_validator("image", "workspace_root", "output_dir", "shared_workspace_root", "executor_base_url")
+    @field_validator("image", "workspace_root", "output_dir", "shared_workspace_root", "host_workspace_root", "executor_base_url")
     @classmethod
     def validate_non_empty(cls, value: str) -> str:
         stripped = value.strip()
@@ -55,7 +60,15 @@ class ExecuteTestsConfig(BaseModel):
             raise ValueError("must not be empty")
         return stripped
 
-    @field_validator("install_timeout_seconds", "suite_timeout_seconds", "memory_mb", "pids", "tmpfs_mb")
+    @field_validator(
+        "install_timeout_seconds",
+        "suite_timeout_seconds",
+        "memory_mb",
+        "pids",
+        "tmpfs_mb",
+        "generated_tests_min_executed_files",
+        "generated_tests_max_repair_passes",
+    )
     @classmethod
     def validate_positive_timeout(cls, value: int) -> int:
         if value <= 0:
@@ -67,6 +80,13 @@ class ExecuteTestsConfig(BaseModel):
     def validate_positive_cpus(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("must be greater than 0")
+        return value
+
+    @field_validator("generated_tests_min_collection_ratio")
+    @classmethod
+    def validate_collection_ratio(cls, value: float) -> float:
+        if not 0 <= value <= 1:
+            raise ValueError("must be between 0 and 1")
         return value
 
 
@@ -115,20 +135,40 @@ class Settings(BaseSettings):
     generate_tests_model: str = Field(default="gpt-4.1-mini", alias="GENERATE_TESTS_MODEL")
     generate_tests_max_tokens: int = Field(default=8000, alias="GENERATE_TESTS_MAX_TOKENS")
     generate_tests_temperature: float = Field(default=0.2, alias="GENERATE_TESTS_TEMPERATURE")
-    generate_tests_max_targets_per_run: int = Field(default=50, alias="GENERATE_TESTS_MAX_TARGETS_PER_RUN")
+    generate_tests_max_targets_per_run: int = Field(default=5, alias="GENERATE_TESTS_MAX_TARGETS_PER_RUN")
     generate_tests_output_dir: str = Field(default="generated_tests", alias="GENERATE_TESTS_OUTPUT_DIR")
     generate_tests_enable_service_functions: bool = Field(default=True, alias="GENERATE_TESTS_ENABLE_SERVICE_FUNCTIONS")
     generate_tests_enable_api_endpoints: bool = Field(default=True, alias="GENERATE_TESTS_ENABLE_API_ENDPOINTS")
-    execute_tests_image: str = Field(default="python:3.12-slim", alias="EXECUTE_TESTS_IMAGE")
+    execute_tests_image: str = Field(default="astsp-executor:latest", alias="EXECUTE_TESTS_IMAGE")
     execute_tests_workspace_root: str = Field(default="/workspace", alias="EXECUTE_TESTS_WORKSPACE_ROOT")
     execute_tests_output_dir: str = Field(default="execute_tests", alias="EXECUTE_TESTS_OUTPUT_DIR")
     execute_tests_shared_workspace_root: str = Field(
         default="/executor-workspaces",
         alias="EXECUTE_TESTS_SHARED_WORKSPACE_ROOT",
     )
+    execute_tests_host_workspace_root: str = Field(
+        default="/executor-workspaces",
+        alias="EXECUTE_TESTS_HOST_WORKSPACE_ROOT",
+    )
     executor_base_url: str = Field(default="http://executor:8080", alias="EXECUTOR_BASE_URL")
     execute_tests_install_timeout_seconds: int = Field(default=300, alias="EXECUTE_TESTS_INSTALL_TIMEOUT_SECONDS")
     execute_tests_suite_timeout_seconds: int = Field(default=600, alias="EXECUTE_TESTS_SUITE_TIMEOUT_SECONDS")
+    execute_tests_generated_tests_min_collection_ratio: float = Field(
+        default=0.5,
+        alias="EXECUTE_TESTS_GENERATED_TESTS_MIN_COLLECTION_RATIO",
+    )
+    execute_tests_generated_tests_min_executed_files: int = Field(
+        default=1,
+        alias="EXECUTE_TESTS_GENERATED_TESTS_MIN_EXECUTED_FILES",
+    )
+    execute_tests_generated_tests_fail_if_zero_collected: bool = Field(
+        default=True,
+        alias="EXECUTE_TESTS_GENERATED_TESTS_FAIL_IF_ZERO_COLLECTED",
+    )
+    execute_tests_generated_tests_max_repair_passes: int = Field(
+        default=1,
+        alias="EXECUTE_TESTS_GENERATED_TESTS_MAX_REPAIR_PASSES",
+    )
     execute_tests_cpus: float = Field(default=1.0, alias="EXECUTE_TESTS_CPUS")
     execute_tests_memory_mb: int = Field(default=1024, alias="EXECUTE_TESTS_MEMORY_MB")
     execute_tests_pids: int = Field(default=256, alias="EXECUTE_TESTS_PIDS")
@@ -166,9 +206,14 @@ class Settings(BaseSettings):
                 workspace_root=self.execute_tests_workspace_root,
                 output_dir=self.execute_tests_output_dir,
                 shared_workspace_root=self.execute_tests_shared_workspace_root,
+                host_workspace_root=self.execute_tests_host_workspace_root,
                 executor_base_url=self.executor_base_url,
                 install_timeout_seconds=self.execute_tests_install_timeout_seconds,
                 suite_timeout_seconds=self.execute_tests_suite_timeout_seconds,
+                generated_tests_min_collection_ratio=self.execute_tests_generated_tests_min_collection_ratio,
+                generated_tests_min_executed_files=self.execute_tests_generated_tests_min_executed_files,
+                generated_tests_fail_if_zero_collected=self.execute_tests_generated_tests_fail_if_zero_collected,
+                generated_tests_max_repair_passes=self.execute_tests_generated_tests_max_repair_passes,
                 cpus=self.execute_tests_cpus,
                 memory_mb=self.execute_tests_memory_mb,
                 pids=self.execute_tests_pids,

@@ -60,6 +60,7 @@ export type ExecutionSuite = {
   suite_key: string;
   status: string;
   command?: string[] | null;
+  command_source?: string | null;
   exit_code?: number | null;
   collected: number;
   passed: number;
@@ -69,6 +70,45 @@ export type ExecutionSuite = {
   duration_seconds: number;
   log_path?: string | null;
   junit_path?: string | null;
+  quality_status?: string | null;
+  quality_failure_reason?: string | null;
+  files_generated?: number;
+  files_collected?: number;
+  files_executed?: number;
+  collection_failed_files?: number;
+  collection_coverage_ratio?: number;
+  collected_test_count?: number;
+  executed_test_count?: number;
+  collect_command?: string[] | null;
+  collect_command_source?: string | null;
+  collect_exit_code?: number | null;
+  collect_log_path?: string | null;
+  repair_passes_run?: number;
+  files_repaired?: number;
+  files_repaired_and_collected?: number;
+  repair_log_path?: string | null;
+  file_results?: GeneratedTestFileExecution[];
+};
+
+export type GeneratedTestFileExecution = {
+  path: string;
+  target_key?: string | null;
+  symbol?: string | null;
+  status: string;
+  attempt_count?: number;
+  final_attempt?: number;
+  repair_status?: string | null;
+  collection_error_excerpt?: string | null;
+  repaired_from_path?: string | null;
+  initial_attempt_artifact_path?: string | null;
+  final_attempt_artifact_path?: string | null;
+  collected_test_count: number;
+  executed_test_count: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  skipped: number;
+  message?: string | null;
 };
 
 export type ExecutionSummary = {
@@ -173,6 +213,7 @@ export type AnalysisSummary = {
   overall_assessment: string;
   baseline_repo_status: string;
   generated_tests_status: string;
+  generated_tests_quality_failure_reason?: string | null;
   infrastructure_status: string;
   analysis_mode: string;
   llm_summary_available: boolean;
@@ -210,6 +251,10 @@ export type GeneratedTestManifestEntry = {
   generated_test_file?: string | null;
   test_kind?: string | null;
   status: string;
+  generation_mode?: "security_recipe" | "generic_fallback" | null;
+  recipe_id?: string | null;
+  recipe_name?: string | null;
+  risk_tags?: string[];
   skip_reason?: string | null;
 };
 
@@ -218,6 +263,7 @@ export type GeneratedTestManifest = {
   run_id: string;
   generated_at: string;
   files: GeneratedTestManifestEntry[];
+  empty_reason?: string | null;
 };
 
 export type GeneratedTestFileContent = {
@@ -225,6 +271,28 @@ export type GeneratedTestFileContent = {
   path: string;
   content: string;
   language: string;
+};
+
+export type GeneratedTestCase = {
+  case_id: string;
+  name: string;
+  classname?: string | null;
+  generated_test_file?: string | null;
+  status: string;
+  duration_seconds: number;
+  message?: string | null;
+  target_key?: string | null;
+  target_type?: string | null;
+  symbol?: string | null;
+  test_kind?: string | null;
+  recipe_id?: string | null;
+  recipe_name?: string | null;
+};
+
+export type GeneratedTestCases = {
+  run_id: string;
+  source: string;
+  cases: GeneratedTestCase[];
 };
 
 export type ProjectPayload = {

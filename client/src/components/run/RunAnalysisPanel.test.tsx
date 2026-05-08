@@ -5,12 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunAnalysisPanel } from "./RunAnalysisPanel";
 import { apiClient } from "../../lib/apiClient";
-import type { AnalysisReport, AnalysisSummary } from "../../types/api";
+import type { AnalysisSummary } from "../../types/api";
 
 vi.mock("../../lib/apiClient", () => ({
   apiClient: {
     getAnalysisSummary: vi.fn(),
-    getAnalysisReport: vi.fn(),
   },
 }));
 
@@ -105,21 +104,13 @@ function buildSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary
   };
 }
 
-function buildReport(overrides: Partial<AnalysisReport> = {}): AnalysisReport {
-  return {
-    run_id: "run-123",
-    path: "analyze/llm_summary.md",
-    content: "# Run Analysis\n\n## Overall\nGenerated tests exposed a failure.\n",
-    ...overrides,
-  };
-}
-
 function renderPanel(stageStatus = "succeeded") {
   return render(
     <MemoryRouter initialEntries={["/app/runs/run-123"]}>
       <Routes>
         <Route path="/app/runs/:runId" element={<RunAnalysisPanel token="token" runId="run-123" stageStatus={stageStatus} />} />
         <Route path="/app/runs/:runId/generated-tests" element={<div>Generated tests route</div>} />
+        <Route path="/app/runs/:runId/analysis" element={<div>Analysis route</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -130,34 +121,28 @@ describe("RunAnalysisPanel", () => {
     vi.resetAllMocks();
   });
 
-  it("renders the assessment, findings, and markdown narrative", async () => {
+  it("renders the compact assessment and analysis-page navigation", async () => {
     mockApiClient.getAnalysisSummary.mockResolvedValue(buildSummary());
-    mockApiClient.getAnalysisReport.mockResolvedValue(buildReport());
 
     renderPanel();
 
     expect(await screen.findByText("Generated tests found new failures")).toBeInTheDocument();
-    expect(screen.getAllByText("Generated test for `parse_config` failed under `Path Traversal`.").length).toBeGreaterThanOrEqual(2);
-    expect(await screen.findByText("# Run Analysis", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("filesystem access")).toBeInTheDocument();
-    expect(screen.getByText("confidence score 0.96", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("Heuristics version")).toBeInTheDocument();
-    expect(screen.getByText("What changed")).toBeInTheDocument();
-    expect(screen.getByText("Recurring findings")).toBeInTheDocument();
-    expect(screen.getByText(/1 new finding appeared and 1 prior finding disappeared/i)).toBeInTheDocument();
+    expect(screen.getByText("Open analysis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /go to analysis page/i })).toBeInTheDocument();
+    expect(screen.queryByText("Run Analysis")).not.toBeInTheDocument();
   });
 
-  it("navigates to the generated tests page with the selected file path", async () => {
+  it("navigates to the dedicated analysis page", async () => {
     mockApiClient.getAnalysisSummary.mockResolvedValue(buildSummary());
-    mockApiClient.getAnalysisReport.mockResolvedValue(buildReport());
 
     renderPanel();
 
     await screen.findByText("Generated tests found new failures");
-    await userEvent.click(screen.getByRole("button", { name: /view generated test/i }));
+    await userEvent.click(screen.getByRole("button", { name: /go to analysis page/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Generated tests route")).toBeInTheDocument();
+      expect(screen.getByText("Analysis route")).toBeInTheDocument();
     });
   });
 
@@ -168,20 +153,9 @@ describe("RunAnalysisPanel", () => {
 
     expect(await screen.findByText("Analysis pending")).toBeInTheDocument();
     expect(screen.getByText(/analysis stage is still running/i)).toBeInTheDocument();
-    expect(mockApiClient.getAnalysisReport).not.toHaveBeenCalled();
   });
 
-  it("keeps deterministic analysis visible when the narrative request fails", async () => {
-    mockApiClient.getAnalysisSummary.mockResolvedValue(buildSummary());
-    mockApiClient.getAnalysisReport.mockRejectedValue(new Error("Analysis report not found"));
-
-    renderPanel();
-
-    expect(await screen.findByText("Generated tests found new failures")).toBeInTheDocument();
-    expect(await screen.findByText("Analysis report not found")).toBeInTheDocument();
-  });
-
-  it("renders downgraded low-signal counters and heuristic tags", async () => {
+  it("renders compact counters for downgraded low-signal states", async () => {
     mockApiClient.getAnalysisSummary.mockResolvedValue(
       buildSummary({
         counts: {
@@ -217,14 +191,12 @@ describe("RunAnalysisPanel", () => {
         ],
       })
     );
-    mockApiClient.getAnalysisReport.mockRejectedValue(new Error("Analysis report not found"));
 
     renderPanel();
 
     expect(await screen.findByText("Low-signal findings")).toBeInTheDocument();
-    expect(screen.getByText("Unrunnable failures")).toBeInTheDocument();
-    expect(screen.getByText("Flaky suspects")).toBeInTheDocument();
-    expect(screen.getByText("generated suite unrunnable")).toBeInTheDocument();
+    expect(screen.queryByText("Unrunnable failures")).not.toBeInTheDocument();
+    expect(screen.queryByText("Flaky suspects")).not.toBeInTheDocument();
   });
 
   it("renders an unavailable trend empty state when no comparison run exists", async () => {
@@ -245,11 +217,11 @@ describe("RunAnalysisPanel", () => {
         },
       })
     );
-    mockApiClient.getAnalysisReport.mockResolvedValue(buildReport());
 
     renderPanel();
 
     expect(await screen.findByText("Generated tests found new failures")).toBeInTheDocument();
-    expect(screen.getByText("No earlier analyzed run is available for comparison.")).toBeInTheDocument();
+    expect(screen.getByText("Open analysis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /go to analysis page/i })).toBeInTheDocument();
   });
 });

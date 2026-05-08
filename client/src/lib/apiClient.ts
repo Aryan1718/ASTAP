@@ -4,6 +4,7 @@ import type {
   ExecutionLog,
   ExecutionSummary,
   GeneratedTestFileContent,
+  GeneratedTestCases,
   GeneratedTestManifest,
   Project,
   ProjectPayload,
@@ -108,5 +109,8 @@ export const apiClient = {
       token,
       `/runs/${runId}/generated-tests/content?path=${encodeURIComponent(path)}`
     );
+  },
+  getGeneratedTestCases(token: string, runId: string) {
+    return request<GeneratedTestCases>(token, `/runs/${runId}/generated-tests/cases`);
   },
 };

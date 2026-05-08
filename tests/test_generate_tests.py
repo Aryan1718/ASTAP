@@ -12,12 +12,15 @@ from shared.targets import (
     build_discover_targets_artifact,
     build_slim_target_row,
     compute_target_key,
+    generated_test_relative_path,
     generated_security_test_relative_path,
 )
 from worker.app.jobs.generate_tests import (
     build_generation_packet,
+    build_generic_generation_packet,
     evaluate_runnability,
     generate_tests_job,
+    select_generic_fallback_candidates_for_generation,
     select_recipe_candidates_for_generation,
     validate_generated_test_code,
 )
@@ -286,6 +289,7 @@ def test_generate_tests_job_creates_one_file_per_supported_target_and_manifest(t
             "skip_reason": "unsupported_target_type:WORKFLOW_STEP",
         }
     ]
+    assert manifest["empty_reason"] is None
     assert marks["output_json"] == {
         "supported_targets": 2,
         "runnable_targets": 2,
@@ -293,6 +297,7 @@ def test_generate_tests_job_creates_one_file_per_supported_target_and_manifest(t
         "skipped_targets": 1,
         "manifest_path": manifest_key,
         "artifact_paths": [service_path, api_path, "generated_tests/test_index.json", "generated_tests.zip"],
+        "empty_reason": None,
     }
     assert enqueued == {"job_id": "exec-job-1", "rq_job_id": "rq-execute_tests"}
 
@@ -444,6 +449,41 @@ def test_generate_tests_skips_unsupported_target_types() -> None:
     assert selected[0].target_row.target_key == supported.target_key
     assert selected[0].recipe_match.recipe_id == "path_traversal"
     assert skipped[0].skip_reason == "unsupported_target_type:MCP_TOOL"
+
+
+def test_generate_tests_selects_generic_fallback_when_no_security_recipe_matches() -> None:
+    service_target = make_rich_target(
+        target_type="SERVICE_FUNCTION",
+        file_path="app/main.py",
+        symbol="parse_config",
+        signature="parse_config(path: str | None = None) -> dict",
+        line_start=1,
+        line_end=4,
+        risk_tags=[],
+        input_sources=["function_parameter"],
+        dangerous_sinks=[],
+    )
+    db_targets = [
+        SimpleNamespace(
+            run_id="run-1",
+            target_key=service_target.target_key,
+            target_type=service_target.target_type,
+            file_path=service_target.file_path,
+            symbol=service_target.symbol,
+            signature=service_target.signature,
+            target_metadata=build_slim_target_row("run-1", service_target).metadata.model_dump(exclude_none=True),
+        )
+    ]
+
+    selected, skipped = select_generic_fallback_candidates_for_generation(
+        db_targets=db_targets,
+        targets_by_key={service_target.target_key: service_target},
+        config=GenerateTestsConfig(),
+    )
+
+    assert len(selected) == 1
+    assert selected[0].target_row.target_key == service_target.target_key
+    assert skipped == []
 
 
 def test_evaluate_runnability_rejects_missing_fastapi_context() -> None:
@@ -608,6 +648,7 @@ def test_generate_tests_job_skips_unrunnable_recipe_candidate(tmp_path: Path, mo
             "skip_reason": "runnability_missing_fastapi_test_client_context",
         }
     ]
+    assert manifest["empty_reason"] == "no_eligible_targets_after_runnability_filtering"
     assert marks["output_json"] == {
         "supported_targets": 1,
         "runnable_targets": 0,
@@ -615,8 +656,124 @@ def test_generate_tests_job_skips_unrunnable_recipe_candidate(tmp_path: Path, mo
         "skipped_targets": 1,
         "manifest_path": manifest_key,
         "artifact_paths": ["generated_tests/test_index.json", "generated_tests.zip"],
+        "empty_reason": "no_eligible_targets_after_runnability_filtering",
     }
     assert enqueued == {"job_id": "exec-job-2", "rq_job_id": "rq-execute_tests"}
+
+
+def test_generate_tests_job_uses_generic_fallback_when_no_security_recipe_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_path = tmp_path / "repo"
+    write_repo_fixture(repo_path)
+    snapshot_path = tmp_path / "snapshot.tar.gz"
+    create_snapshot(repo_path, snapshot_path)
+
+    service_target = make_rich_target(
+        target_type="SERVICE_FUNCTION",
+        file_path="app/main.py",
+        symbol="parse_config",
+        signature="parse_config(path: str) -> dict",
+        line_start=6,
+        line_end=9,
+        risk_tags=[],
+        input_sources=["function_parameter"],
+        dangerous_sinks=[],
+    )
+    discover_artifact = build_discover_targets_artifact("run-1", [service_target])
+    db_targets = [
+        SimpleNamespace(
+            run_id="run-1",
+            target_key=service_target.target_key,
+            target_type=service_target.target_type,
+            file_path=service_target.file_path,
+            symbol=service_target.symbol,
+            signature=service_target.signature,
+            target_metadata=build_slim_target_row("run-1", service_target).metadata.model_dump(exclude_none=True),
+        )
+    ]
+    uploads: dict[str, str] = {}
+    marks: dict[str, object] = {}
+
+    class FakeProvider:
+        def __init__(self, api_key: str, config: GenerateTestsConfig) -> None:
+            self.api_key = api_key
+            self.config = config
+
+        def generate_test_code(self, packet) -> str:
+            assert packet.generation_mode == "generic_fallback"
+            return "def test_parse_config_smoke():\n    assert parse_config('cfg')['path'] == 'cfg'\n"
+
+    class FakeSession:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("worker.app.jobs.generate_tests.SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr("worker.app.jobs.generate_tests.claim_job", lambda session, job_id: SimpleNamespace(id=job_id))
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.get_run",
+        lambda session, run_id: SimpleNamespace(
+            id=run_id,
+            workspace_id="workspace-1",
+            project_id="project-1",
+            snapshot_bucket="runs",
+            snapshot_key="workspace-1/project-1/run-1/snapshot/snapshot.tar.gz",
+        ),
+    )
+    monkeypatch.setattr("worker.app.jobs.generate_tests.mark_run_running", lambda session, run_id: None)
+    monkeypatch.setattr("worker.app.jobs.generate_tests.list_targets_for_run", lambda session, run_id: db_targets)
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.download_storage_object",
+        lambda bucket, object_key, destination: destination.write_bytes(snapshot_path.read_bytes()),
+    )
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.download_storage_object_text",
+        lambda bucket, object_key: json.dumps(discover_artifact.model_dump(mode="json")),
+    )
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.upload_file_to_storage",
+        lambda bucket, object_key, source, content_type: uploads.__setitem__(object_key, source.read_text(encoding="utf-8") if source.suffix != ".zip" else "zip"),
+    )
+    monkeypatch.setattr("worker.app.jobs.generate_tests.OpenAIGenerateTestsProvider", FakeProvider)
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.settings",
+        Settings(
+            DATABASE_URL="sqlite:///tmp.db",
+            REDIS_URL="redis://localhost:6379/0",
+            SUPABASE_URL="https://example.supabase.co",
+            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
+            SUPABASE_STORAGE_BUCKET="runs",
+            OPENAI_API_KEY="test-key",
+        ),
+    )
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.mark_job_succeeded_with_artifacts",
+        lambda session, job_id, output_json, artifacts_json: marks.update(
+            {"job_id": job_id, "output_json": output_json, "artifacts_json": artifacts_json}
+        ),
+    )
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.get_job_by_stage",
+        lambda session, run_id, stage: SimpleNamespace(id="exec-job-fallback") if stage == "execute_tests" else None,
+    )
+    monkeypatch.setattr(
+        "worker.app.jobs.generate_tests.get_queue",
+        lambda name: SimpleNamespace(enqueue=lambda fn, run_id, job_id: SimpleNamespace(id=f"rq-{name}")),
+    )
+    monkeypatch.setattr("worker.app.jobs.generate_tests.set_job_rq_id", lambda session, job_id, rq_job_id: None)
+
+    generate_tests_job("run-1", "job-fallback")
+
+    file_path = generated_test_relative_path("generated_tests", "SERVICE_FUNCTION", "parse_config", service_target.target_key)
+    manifest_key = "workspace-1/project-1/run-1/generated_tests/test_index.json"
+    manifest = json.loads(uploads[manifest_key])
+    assert manifest["files"][0]["generation_mode"] == "generic_fallback"
+    assert manifest["files"][0]["generated_test_file"] == file_path
+    assert manifest["files"][0]["recipe_id"] is None
+    assert manifest["empty_reason"] is None
+    assert f"workspace-1/project-1/run-1/{file_path}" in uploads
+    assert marks["output_json"]["supported_targets"] == 1
+    assert marks["output_json"]["empty_reason"] is None
 
 
 def test_generated_test_paths_are_stable_and_routed_by_target_type() -> None:
@@ -660,6 +817,27 @@ def test_target_key_mapping_from_db_to_artifact_builds_packet(tmp_path: Path) ->
     assert packet.target_db.target_key == packet.target_artifact.target_key
     assert packet.recipe_id == "path_traversal"
     assert "def parse_config" in packet.source_context.code
+
+
+def test_generic_fallback_packet_builder_marks_mode(tmp_path: Path) -> None:
+    repo_path = tmp_path / "repo"
+    write_repo_fixture(repo_path)
+    target = make_rich_target(
+        target_type="SERVICE_FUNCTION",
+        file_path="app/main.py",
+        symbol="parse_config",
+        signature="parse_config(path: str) -> dict",
+        line_start=6,
+        line_end=9,
+        risk_tags=[],
+        input_sources=["function_parameter"],
+        dangerous_sinks=[],
+    )
+
+    packet = build_generic_generation_packet("run-1", repo_path, build_slim_target_row("run-1", target), target)
+
+    assert packet is not None
+    assert packet.generation_mode == "generic_fallback"
 
 
 def test_generate_tests_config_reads_new_env_fields() -> None:
