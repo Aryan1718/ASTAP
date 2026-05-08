@@ -131,6 +131,7 @@ def test_executor_creates_hardened_container_and_rewrites_python_commands(tmp_pa
                 "bootstrap": [["python", "-m", "venv", "/workspace/out/venv"]],
                 "install": [["python", "-m", "pip", "install", "pytest"]],
                 "existing_suite": ["python", "-m", "pytest", "tests"],
+                "generated_collect": ["python", "-m", "pytest", ".astap/generated_tests", "--collect-only"],
                 "generated_suite": ["python", "-m", "pytest", ".astap/generated_tests"],
             },
         },
@@ -138,7 +139,7 @@ def test_executor_creates_hardened_container_and_rewrites_python_commands(tmp_pa
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["isolation"]["network_mode"] == "none"
+    assert payload["isolation"]["network_mode"] == "bridge"
     assert payload["isolation"]["read_only_rootfs"] is True
     assert payload["isolation"]["repo_mount_read_only"] is False
     assert payload["isolation"]["cap_drop_all"] is True
@@ -148,7 +149,7 @@ def test_executor_creates_hardened_container_and_rewrites_python_commands(tmp_pa
 
     create_command = recorded_commands[0]
     assert create_command[:2] == ["docker", "create"]
-    assert "--network" in create_command and create_command[create_command.index("--network") + 1] == "none"
+    assert "--network" in create_command and create_command[create_command.index("--network") + 1] == "bridge"
     assert "--read-only" in create_command
     assert "--cap-drop" in create_command and create_command[create_command.index("--cap-drop") + 1] == "ALL"
     assert "--security-opt" in create_command and create_command[create_command.index("--security-opt") + 1] == "no-new-privileges:true"
@@ -159,6 +160,7 @@ def test_executor_creates_hardened_container_and_rewrites_python_commands(tmp_pa
     exec_commands = [cmd for cmd in recorded_commands if cmd[:2] == ["docker", "exec"]]
     assert any("/workspace/out/venv/bin/python" in cmd for cmd in exec_commands)
     assert any(cmd[3:6] == ["python", "-m", "pytest"] for cmd in exec_commands)
+    assert any("--collect-only" in cmd for cmd in exec_commands)
     assert recorded_commands[-1][:3] == ["docker", "rm", "-f"]
 
 

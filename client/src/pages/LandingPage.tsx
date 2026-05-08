@@ -46,7 +46,7 @@ export function LandingPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link to="/login">
-              <Button variant="ghost">Login</Button>
+              <Button>Login</Button>
             </Link>
             <Link to="/signup">
               <Button>Get Started</Button>
@@ -72,7 +72,7 @@ export function LandingPage() {
                   <Button className="px-6 py-3">Get Started</Button>
                 </Link>
                 <Link to="/login">
-                  <Button variant="ghost" className="px-6 py-3">
+                  <Button className="px-6 py-3">
                     Login
                   </Button>
                 </Link>

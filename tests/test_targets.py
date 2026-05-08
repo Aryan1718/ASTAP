@@ -75,6 +75,30 @@ class UserService:
     )
 
 
+def write_flask_repo(repo_path: Path) -> None:
+    app_dir = repo_path / "app"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    (app_dir / "main.py").write_text(
+        """
+from flask import Blueprint, Flask, jsonify
+
+app = Flask(__name__)
+blueprint = Blueprint("items", __name__)
+
+
+@app.route("/health")
+def health() -> tuple:
+    return jsonify({"ok": True}), 200
+
+
+@blueprint.route("/items/<item_id>", methods=["POST"])
+def create_item(item_id: str):
+    return {"id": item_id}, 201
+""".strip(),
+        encoding="utf-8",
+    )
+
+
 def test_compute_target_key_is_deterministic() -> None:
     key_one = compute_target_key(
         target_type="SERVICE_FUNCTION",
@@ -285,9 +309,12 @@ def test_discover_enriches_targets_with_security_metadata(tmp_path: Path) -> Non
         "module_path": "app.main",
         "import_hint": "app.main:get_item",
         "framework_hints": ["fastapi", "pytest"],
+        "api_framework": "fastapi",
         "route_path": "/items/{id}",
         "fastapi_router_symbol": "router",
         "fastapi_test_client_candidate": True,
+        "flask_app_symbol": None,
+        "flask_test_client_candidate": False,
     }
 
     admin_search = targets_by_symbol[("API_ENDPOINT", "admin_search")]
@@ -296,6 +323,35 @@ def test_discover_enriches_targets_with_security_metadata(tmp_path: Path) -> Non
     assert "auth_missing_or_unclear" not in admin_search.risk_tags
     assert "Depends(get_current_user)" in admin_search.dependency_hints
     assert admin_search.auth_hints == ["auth_context_argument", "auth_required"]
+
+
+def test_discover_detects_flask_routes_and_execution_context(tmp_path: Path) -> None:
+    write_flask_repo(tmp_path)
+
+    rich_targets = discover_python_targets(tmp_path)
+    api_targets = [target for target in rich_targets if target.target_type == "API_ENDPOINT"]
+    targets_by_symbol = {target.symbol: target for target in api_targets}
+
+    health = targets_by_symbol["health"]
+    assert health.http_method == "GET"
+    assert health.route_path == "/health"
+    assert "flask" in health.framework_hints
+    assert health.execution_context == {
+        "module_path": "app.main",
+        "import_hint": "app.main:health",
+        "framework_hints": ["flask", "pytest"],
+        "api_framework": "flask",
+        "route_path": "/health",
+        "fastapi_router_symbol": None,
+        "fastapi_test_client_candidate": False,
+        "flask_app_symbol": "app",
+        "flask_test_client_candidate": True,
+    }
+
+    create_item = targets_by_symbol["create_item"]
+    assert create_item.http_method == "POST"
+    assert create_item.route_path == "/items/<item_id>"
+    assert create_item.execution_context["flask_app_symbol"] == "blueprint"
 
 
 def test_unique_run_and_target_key_index_exists() -> None:

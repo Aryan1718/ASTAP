@@ -50,7 +50,7 @@ def analyze_job(run_id: str, job_id: str) -> None:
         discover_payload = _load_discover_artifact(discover_job)
         manifest = _load_generated_manifest(generate_tests_job)
         execution_results = _load_execution_results(execute_tests_job)
-        failure_records = _build_failure_records(execute_tests_job, manifest)
+        failure_records = _build_failure_records(execute_tests_job, manifest, execution_results)
         previous_analysis = _load_previous_analysis(session, run)
         summary_payload = _build_summary_payload(run, execution_results, failure_records, previous_analysis)
         trend = summary_payload["trend"]
@@ -160,7 +160,7 @@ def _load_execution_results(execute_tests_job) -> dict:
     return json.loads(download_storage_object_text(artifact["bucket"], artifact["key"]))
 
 
-def _build_failure_records(execute_tests_job, manifest: GeneratedTestManifest) -> list[dict]:
+def _build_failure_records(execute_tests_job, manifest: GeneratedTestManifest, execution_results: dict) -> list[dict]:
     manifest_entries_by_path = {
         entry.generated_test_file: entry
         for entry in manifest.files
@@ -176,6 +176,7 @@ def _build_failure_records(execute_tests_job, manifest: GeneratedTestManifest) -
         suite_key = _suite_key_from_junit_path(artifact["path"])
         xml_payload = download_storage_object_text(artifact["bucket"], artifact["key"])
         failures.extend(_parse_junit_failures(xml_payload, suite_key, manifest_entries_by_path))
+    failures.extend(_build_generated_collection_failure_records(execution_results, manifest_entries_by_path))
     return failures
 
 
@@ -257,6 +258,45 @@ def _correlate_generated_failure(*, suite_key: str, file_path: str | None, class
     return None
 
 
+def _build_generated_collection_failure_records(execution_results: dict, manifest_entries_by_path: dict[str, object]) -> list[dict]:
+    generated_suite = execution_results.get("generated_tests") or {}
+    file_results = generated_suite.get("file_results")
+    if not isinstance(file_results, list):
+        return []
+
+    records: list[dict] = []
+    for file_result in file_results:
+        if not isinstance(file_result, dict):
+            continue
+        status = str(file_result.get("status") or "")
+        if status not in {"collection_failed", "collection_failed_after_repair"}:
+            continue
+
+        file_path = str(file_result.get("path") or "")
+        correlated_entry = manifest_entries_by_path.get(file_path)
+        records.append(
+            {
+                "suite": "generated",
+                "status": "error",
+                "file_path": file_path,
+                "classname": Path(file_path).stem if file_path else None,
+                "test_name": f"{Path(file_path).stem} [collection]",
+                "message": file_result.get("message") or "Generated test failed during collection.",
+                "traceback_excerpt": file_result.get("message") or "",
+                "generated_test_file": file_path,
+                "target_key": correlated_entry.target_key if correlated_entry else file_result.get("target_key"),
+                "target_type": correlated_entry.target_type if correlated_entry else None,
+                "symbol": correlated_entry.symbol if correlated_entry else file_result.get("symbol"),
+                "source_file": correlated_entry.source_file if correlated_entry else None,
+                "test_kind": correlated_entry.test_kind if correlated_entry else None,
+                "recipe_id": correlated_entry.recipe_id if correlated_entry else None,
+                "recipe_name": correlated_entry.recipe_name if correlated_entry else None,
+                "risk_tags": correlated_entry.risk_tags if correlated_entry else [],
+            }
+        )
+    return records
+
+
 def _build_summary_payload(run, execution_results: dict, failure_records: list[dict], previous_analysis: dict | None) -> dict:
     environment = execution_results.get("environment") if isinstance(execution_results, dict) else {}
     if not isinstance(environment, dict):
@@ -268,10 +308,12 @@ def _build_summary_payload(run, execution_results: dict, failure_records: list[d
     generated_suite = execution_results.get("generated_tests") or {}
     overall_result = execution_results.get("overall_result")
     execution_error = execution_results.get("error")
+    generated_quality_status = str(generated_suite.get("quality_status") or generated_suite.get("status") or "unknown")
+    generated_quality_failure_reason = generated_suite.get("quality_failure_reason")
 
     infrastructure_status = "error" if execution_error or str(overall_result).startswith("environment_") else "ok"
     baseline_repo_status = str(existing_suite.get("status") or "unknown")
-    generated_tests_status = str(generated_suite.get("status") or "unknown")
+    generated_tests_status = generated_quality_status
     recurring_fingerprints = _previous_failure_fingerprints(previous_analysis)
     _apply_failure_heuristics(
         failure_records=failure_records,
@@ -282,10 +324,10 @@ def _build_summary_payload(run, execution_results: dict, failure_records: list[d
     trend = _build_trend_payload(run=run, current_failure_records=failure_records, previous_analysis=previous_analysis)
     generated_failure_records = [record for record in failure_records if record["suite"] == "generated"]
 
-    generated_unrunnable = _generated_suite_unrunnable(generated_failure_records)
+    generated_unrunnable = generated_quality_status in {"unrunnable", "quality_failed"} or _generated_suite_unrunnable(generated_failure_records)
     if infrastructure_status == "error":
         overall_assessment = "infrastructure_error"
-    elif baseline_repo_status == "passed" and generated_tests_status in {"passed", "skipped"}:
+    elif baseline_repo_status == "passed" and generated_quality_status in {"runnable", "skipped"} and generated_suite.get("status") in {"passed", "skipped"}:
         overall_assessment = "all_passed"
     elif baseline_repo_status != "passed" and not generated_failure_records:
         overall_assessment = "baseline_repo_failed"
@@ -310,7 +352,13 @@ def _build_summary_payload(run, execution_results: dict, failure_records: list[d
     counts = {
         "existing_failed": int(existing_suite.get("failed", 0)) + int(existing_suite.get("errors", 0)),
         "generated_failed": int(generated_suite.get("failed", 0)) + int(generated_suite.get("errors", 0)),
-        "high_signal_failures": len([record for record in generated_failure_records if record.get("target_key")]),
+        "high_signal_failures": len(
+            [
+                record
+                for record in generated_failure_records
+                if record.get("target_key") and record.get("failure_category") == "product_failure"
+            ]
+        ),
         "infrastructure_errors": 1 if infrastructure_status == "error" else 0,
         "low_signal_failures": low_signal_failures,
         "unrunnable_failures": unrunnable_failures,
@@ -325,6 +373,7 @@ def _build_summary_payload(run, execution_results: dict, failure_records: list[d
         "overall_assessment": overall_assessment,
         "baseline_repo_status": baseline_repo_status,
         "generated_tests_status": generated_tests_status,
+        "generated_tests_quality_failure_reason": generated_quality_failure_reason,
         "infrastructure_status": infrastructure_status,
         "analysis_mode": "deterministic_only",
         "llm_summary_available": False,
@@ -547,7 +596,7 @@ def _generated_failure_headline(record: dict) -> str:
     recipe_name = record.get("recipe_name") or record.get("recipe_id") or "generated scenario"
     category = record.get("failure_category")
     if category == "generated_test_issue":
-        return f"Generated test for `{symbol}` likely failed because of setup or runnability issues under `{recipe_name}`."
+        return f"Generated test for `{symbol}` did not run cleanly because of setup, collection, or runnability issues under `{recipe_name}`."
     if category == "flaky_suspect":
         return f"Generated test for `{symbol}` looks flaky under `{recipe_name}`."
     return f"Generated test for `{symbol}` likely exposed a product failure under `{recipe_name}`."

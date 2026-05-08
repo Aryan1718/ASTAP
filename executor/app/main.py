@@ -32,6 +32,7 @@ class ExecutionCommands(BaseModel):
     bootstrap: list[list[str]]
     install: list[list[str]]
     existing_suite: list[str] | None = None
+    generated_collect: list[str] | None = None
     generated_suite: list[str] | None = None
 
 
@@ -90,6 +91,7 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
         "bootstrap": [],
         "install": [],
         "existing_suite": None,
+        "generated_collect": None,
         "generated_suite": None,
     }
     try:
@@ -131,6 +133,13 @@ def create_execution(payload: ExecutionRequest) -> ExecutionResponse:
             steps["existing_suite"] = run_command(
                 container_name,
                 rewrite_python_command(payload.commands.existing_suite),
+                payload.suite_timeout_seconds,
+            )
+
+        if payload.commands.generated_collect is not None:
+            steps["generated_collect"] = run_command(
+                container_name,
+                rewrite_python_command(payload.commands.generated_collect),
                 payload.suite_timeout_seconds,
             )
 
@@ -222,7 +231,7 @@ def create_container(container_name: str, workspace_path: Path, payload: Executi
             "--name",
             container_name,
             "--network",
-            "none",
+            "bridge",
             "--read-only",
             "--cap-drop",
             "ALL",
@@ -341,7 +350,7 @@ def build_response(
         python_version=python_version,
         platform_system=platform_system,
         isolation={
-            "network_mode": "none",
+            "network_mode": "bridge",
             "read_only_rootfs": True,
             "repo_mount_read_only": False,
             "cap_drop_all": True,

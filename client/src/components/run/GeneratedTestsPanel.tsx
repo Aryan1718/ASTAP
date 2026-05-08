@@ -43,6 +43,31 @@ function generatedEntries(manifest: GeneratedTestManifest | null) {
   );
 }
 
+function emptyStateForReason(reason: string | null | undefined) {
+  switch (reason) {
+    case "no_discoverable_python_targets":
+      return {
+        title: "No discoverable Python targets",
+        description: "Discovery completed, but this run did not expose Python targets that the generator can turn into tests.",
+      };
+    case "no_eligible_targets_after_runnability_filtering":
+      return {
+        title: "No eligible targets after filtering",
+        description: "Targets were discovered, but none passed the current eligibility and runnability checks for test generation.",
+      };
+    case "generation_failed_for_all_candidates":
+      return {
+        title: "Generation failed for all candidates",
+        description: "Eligible targets were selected, but every generated file was rejected or failed validation before publication.",
+      };
+    default:
+      return {
+        title: "No generated tests found",
+        description: "This run completed without any generated test files. Once generated artifacts are available, they will appear in this explorer.",
+      };
+  }
+}
+
 function ManifestLoadingState({ minimal }: { minimal: boolean }) {
   return (
     <Card className="h-[calc(100vh-8.5rem)] overflow-hidden">
@@ -269,10 +294,11 @@ export function GeneratedTestsPanel({ token, run, minimal = false, initialSelect
   }
 
   if (manifest && files.length === 0) {
+    const emptyState = emptyStateForReason(manifest.empty_reason);
     return (
       <GeneratedTestsEmptyState
-        title="No generated tests found"
-        description="This run completed without any generated test files. Once generated artifacts are available, they will appear in this explorer."
+        title={emptyState.title}
+        description={emptyState.description}
       />
     );
   }
